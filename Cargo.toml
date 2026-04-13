@@ -1,0 +1,29 @@
+[package]
+name = "shwoop"
+description = "Tool to serve static webpage with optional build-and-hot-reload feature"
+repository = "https://github.com/Pistonite/shwoop"
+authors = ["Pistonight <pistonknight@outlook.com>"]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+exclude = [
+    ".github/**/*",
+    "README.txtpp.md",
+    "Taskfile.yml",
+    "magoo.txt",
+    "magoo.webp"
+]
+
+
+[dependencies.cu]
+package = "pistonite-cu"
+version = "0.8.0"
+features = [ "cli", "derive", "coroutine" ]
+
+[dependencies]
+actix = "0.13.5"
+actix-files = "0.6.10"
+actix-web = "4.13.0"
+actix-web-actors = "4.3.1"
+oneshot = "0.2.1"
+watchexec = "8.2.0"
