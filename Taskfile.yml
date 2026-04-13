@@ -1,0 +1,41 @@
+version: '3'
+
+includes:
+  ecma:
+    taskfile: ./node_modules/mono-dev/task/ecma.yaml
+    internal: true
+    optional: true
+  cargo:
+    taskfile: ./node_modules/mono-dev/task/cargo.yaml
+    internal: true
+    optional: true
+
+tasks:
+  install:
+    - pnpm install
+    - pnpm exec monolint --config
+
+  build:
+    - task: ecma:lib-build
+    - cargo build
+
+  run:
+    - task: ecma:lib-build
+    - cargo run -- {{.CLI_ARGS}}
+    
+
+  check:
+    - task: ecma:check
+    - task: cargo:clippy-all
+    - task: cargo:fmt-check
+
+  fix:
+    - task: ecma:fix
+    - task: cargo:fmt-fix
+
+  upgrade:
+    - pnpm up mono-dev morphdom
+    - pnpm dedupe
+    - pnpm dedupe --check
+
+

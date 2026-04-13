@@ -79,5 +79,20 @@ where
 }
 
 fn do_inject(content: Vec<u8>) -> Vec<u8> {
-    content
+    const SCRIPT: &[u8] = concat!(
+        "<script type=\"module\">",
+        include_str!("../../dist/index.js"),
+        "</script>",
+    ).as_bytes();
+
+    let insert_pos = content
+        .windows(b"</head>".len())
+        .position(|w| w.eq_ignore_ascii_case(b"</head>"))
+        .unwrap_or(content.len());
+
+    let mut result = Vec::with_capacity(content.len() + SCRIPT.len());
+    result.extend_from_slice(&content[..insert_pos]);
+    result.extend_from_slice(SCRIPT);
+    result.extend_from_slice(&content[insert_pos..]);
+    result
 }
