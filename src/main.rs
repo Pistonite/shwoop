@@ -1,93 +1,87 @@
-use actix_web::middleware::Logger;
-use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
 use cu::pre::*;
-use std::sync::Mutex;
-use std::thread;
 
-mod args;
-mod server;
-
-use server::websocket::Session;
-
-struct AppState {
-    sessions: Mutex<Vec<Session>>,
-}
-
-fn is_ws_upgrade(req: &HttpRequest) -> bool {
-    req.headers()
-        .get(actix_web::http::header::UPGRADE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.eq_ignore_ascii_case("websocket"))
-}
-
-async fn ws_route(
-    req: HttpRequest,
-    stream: web::Payload,
-    state: web::Data<AppState>,
-) -> Result<HttpResponse, actix_web::Error> {
-    if !is_ws_upgrade(&req) {
-        let body = std::fs::read("test-site/index.html")
-            .map_err(actix_web::error::ErrorInternalServerError)?;
-        return Ok(HttpResponse::Ok()
-            .content_type("text/html; charset=utf-8")
-            .body(body));
-    }
-    let (session, response) = Session::start(req, stream)?;
-    state.sessions.lock().unwrap().push(session);
-    Ok(response)
-}
-
-async fn js_route() -> Result<HttpResponse, actix_web::Error> {
-    let body = std::fs::read("test-site/client.js")
-        .map_err(actix_web::error::ErrorInternalServerError)?;
-    Ok(HttpResponse::Ok()
-        .content_type("text/javascript; charset=utf-8")
-        .body(body))
-}
-
-async fn reload_route(state: web::Data<AppState>) -> HttpResponse {
-    let mut sessions = state.sessions.lock().unwrap();
-    sessions.retain_mut(|s| {
-        let s = s.stopped();
-        cu::info!("stopped: {s}");
-        !s
-    });
-    for session in sessions.iter_mut() {
-        session.reload();
-    }
-    HttpResponse::Ok().finish()
-}
+use crate::server::SessionMgr;
 
 #[cu::cli]
 fn main(args: args::Args) -> cu::Result<()> {
     cu::debug!("args: {args:#?}");
 
-    // cu::co::block(future)
+    let path = Path::new(&args.path).normalize()?;
+    if !args.command.is_empty() {
+        cu::info!("running an initial build...");
+        cu::check!(
+            reloader::run_build(&args.command),
+            "failed to run initial build"
+        )?;
+    }
+    if !path.exists() {
+        cu::bail!("the path to serve does not exist: '{}'", path.display());
+    }
+    let watch_for_build = !args.command.is_empty() && !args.watch.is_empty();
 
-    // thread::spawn(move || {
-        actix_web::rt::System::new().block_on(async {
-            let state = web::Data::new(AppState {
-                sessions: Mutex::new(vec![]),
-            });
-            HttpServer::new(move || {
-                App::new()
-                    .app_data(state.clone())
-                    .route("/", web::get().to(ws_route))
-                    .route("/client.js", web::get().to(js_route))
-                    .route("/reload", web::post().to(reload_route))
-                .wrap(Logger::default())
-            })
-                .workers(1)
-                .bind(("0.0.0.0", 8241))?
-                .run()
-            .await?;
-            cu::Ok(())
-        })?;
-    // });
+    let sessions = Arc::new(SessionMgr::default());
 
+    let port = args.port;
+    let host_address = if args.host {
+        match util::local_ip() {
+            Ok(ip) => format!("http://{ip}:{port}"),
+            Err(e) => {
+                cu::warn!("failed to get local ip address: {e:?}");
+                format!("http://localhost:{port}")
+            }
+        }
+    } else {
+        format!("http://localhost:{port}")
+    };
 
+    let server_thread = server::start(args.port, !args.host, Arc::clone(&sessions), path.clone());
+    let (reload_sender, reloader_thread) = reloader::start(sessions, args.command);
+    let (stop_send, stop_recv) = oneshot::channel();
 
+    let source_paths = args.watch.into_iter().map(PathBuf::from).collect();
+    let watcher = watcher::start(
+        path,
+        source_paths,
+        watch_for_build,
+        reload_sender,
+        stop_recv,
+    );
 
+    cu::hint!("webpage hosted at {host_address}");
+    if !args.host {
+        cu::hint!("use --host to expose the server to local network");
+    }
 
+    // actix will handle the interrupt signal if started successfully
+    let server_result = match server_thread.join() {
+        Ok(x) => x,
+        Err(_) => Err(cu::fmterr!("server thread panicked")),
+    };
+    // stop and join the watcher
+    let _ = stop_send.send(());
+    let watcher_result = watcher.join();
+    // stop and join the reloader
+    let _ = reloader_thread.join();
+
+    // prioritize showing error related to the server
+    cu::check!(server_result, "failed to run http server")?;
+
+    // propagate any watchexec errors
+    watcher_result??;
+    // no need to print time for successful exits
+    cu::lv::disable_print_time();
+
+    cu::info!("shutdown complete");
     Ok(())
 }
+
+mod args;
+mod reloader;
+mod server;
+mod util;
+mod watcher;

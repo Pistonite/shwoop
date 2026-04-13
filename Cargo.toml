@@ -18,12 +18,15 @@ exclude = [
 [dependencies.cu]
 package = "pistonite-cu"
 version = "0.8.0"
-features = [ "cli", "derive", "coroutine" ]
+features = [ "cli", "derive", "coroutine", "process" ]
 
 [dependencies]
 actix = "0.13.5"
 actix-files = "0.6.10"
 actix-web = "4.13.0"
 actix-web-actors = "4.3.1"
-oneshot = "0.2.1"
+dashmap = "6.1.0"
+oneshot = { version = "0.2.1", features = [ "async" ] }
 watchexec = "8.2.0"
+watchexec-events = "6.1.0"
+watchexec-signals = "5.0.1"

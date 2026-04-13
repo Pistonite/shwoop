@@ -6,7 +6,6 @@ static LOGO: &str = r#" ______ __  __ __     __ ______ ______ ______
  \/\_____\\_\ \_\\__/".~\_\\_____\\_____\\_\    
   \/_____//_/\/_//_/   \/_//_____//_____//_/    "#;
 
-
 /// Tool for watch and hot-reload static webpages
 #[derive(Debug, PartialEq, clap::Parser, AsRef)]
 #[clap(
@@ -15,18 +14,23 @@ static LOGO: &str = r#" ______ __  __ __     __ ______ ______ ______
 )]
 pub struct Args {
     /// Primary (output) path to watch for changes and reload the page.
-    path: String,
+    pub path: String,
+
     /// Port to serve the content
     #[clap(short, long, default_value = "8241")]
-    port: u16,
+    pub port: u16,
+
+    /// Host the server on the local network. By default, it will only host on localhost
+    #[clap(long)]
+    pub host: bool,
 
     /// Additional (source) directories to watch for changes.
-    /// 
+    ///
     /// Usually used together with a build command. When changes are
     /// detected in these paths, the build command will run
     /// and the page will reload.
     #[clap(short, long)]
-    watch: Vec<String>,
+    pub watch: Vec<String>,
 
     #[clap(flatten)]
     #[as_ref]
@@ -36,7 +40,7 @@ pub struct Args {
     ///
     /// The command should process any files watched by --watch
     /// and put the output in the primary path being watched by this tool.
-    command: Vec<String>,
+    pub command: Vec<String>,
 }
 
 #[cfg(test)]
@@ -59,6 +63,7 @@ mod tests {
             Args {
                 path: ".".into(),
                 port: 8241,
+                host: false,
                 watch: vec![],
                 flags: default_flags(),
                 command: vec![],
@@ -69,10 +74,11 @@ mod tests {
     #[test]
     fn test_with_command() {
         assert_eq!(
-            Args::try_parse_from(["",".", "hello"]).unwrap(),
+            Args::try_parse_from(["", ".", "hello"]).unwrap(),
             Args {
                 path: ".".into(),
                 port: 8241,
+                host: false,
                 watch: vec![],
                 flags: default_flags(),
                 command: vec!["hello".into()],
@@ -83,10 +89,11 @@ mod tests {
     #[test]
     fn test_with_watch_port_and_command() {
         assert_eq!(
-            Args::try_parse_from(["",".", "hello", "-w", "foo", "-p", "12345", "bar"]).unwrap(),
+            Args::try_parse_from(["", ".", "hello", "-w", "foo", "-p", "12345", "bar"]).unwrap(),
             Args {
                 path: ".".into(),
                 port: 12345,
+                host: false,
                 watch: vec!["foo".into()],
                 flags: default_flags(),
                 command: vec!["hello".into(), "bar".into()],
@@ -97,10 +104,12 @@ mod tests {
     #[test]
     fn test_verbose_flag() {
         assert_eq!(
-            Args::try_parse_from(["",".", "hello", "-w", "foo", "-p", "12345", "bar", "-v"]).unwrap(),
+            Args::try_parse_from(["", ".", "hello", "-w", "foo", "-p", "12345", "bar", "-v"])
+                .unwrap(),
             Args {
                 path: ".".into(),
                 port: 12345,
+                host: false,
                 watch: vec!["foo".into()],
                 flags: verbose_flags(),
                 command: vec!["hello".into(), "bar".into()],
