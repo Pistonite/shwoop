@@ -3,18 +3,9 @@
     "version": "0.0.0",
     "type": "module",
     "description": "WebSocket client to reload the page",
-    "files": [
-        "dist/**/*",
-        "src/**/*"
-    ],
-    "exports": "./dist/index.js",
-    "types": "./dist/_dts_/src/index.d.ts",
-    "monolibbuild": {
-        "sourcemap": "inline"
-    },
     "devDependencies": {
+        "@zhoumutou/vite-plugin-inline": "^0.4.2",
         "eslint": "^9.39.4",
-        "mono-dev": "github:pistonight/mono-dev#new_setup",
-        "morphdom": "^2.7.8"
+        "mono-dev": "link:../mono-dev"
     }
 }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
 use actix_files::NamedFile;
-use actix_web::middleware::Logger;
+use actix_web::middleware::{DefaultHeaders, Logger};
 use actix_web::{App, HttpRequest, HttpResponse, HttpServer, guard, web};
 use cu::str::PathExtension;
 
@@ -68,6 +68,8 @@ pub fn start(
                         }
                     })
                     .wrap(InjectHotReloadMiddleware)
+                    // .wrap(DefaultHeaders::new().add((
+                    //     "Cache-Control", "max-age=0, stale-while-revalidate=300")))
                     .wrap(Logger::new("%s - %r"))
             })
             .workers(num_workers)

@@ -16,11 +16,11 @@ tasks:
     - pnpm exec monolint --config
 
   build:
-    - task: ecma:lib-build
+    - task: ecma:app-build
     - cargo build
 
   run:
-    - task: ecma:lib-build
+    - task: ecma:app-build
     - cargo run -- {{.CLI_ARGS}}
     
 
@@ -32,6 +32,9 @@ tasks:
   fix:
     - task: ecma:fix
     - task: cargo:fmt-fix
+
+  dev-app:
+    - task: ecma:app-dev
 
   upgrade:
     - pnpm up mono-dev morphdom

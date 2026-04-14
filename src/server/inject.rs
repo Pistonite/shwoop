@@ -42,57 +42,125 @@ where
         let fut = self.service.call(req);
         Box::pin(async move {
             let res = fut.await?;
-            // don't inject to failure
-            let status = res.status();
-            if status.is_client_error() || status.is_server_error() {
-                return Ok(res.map_into_boxed_body());
-            }
-
-            // only inject to html files
-            let is_html = res
-                .headers()
-                .get(CONTENT_TYPE)
-                .and_then(|v| v.to_str().ok())
-                .is_some_and(|ct| ct.starts_with("text/html"));
-
-            if !is_html {
-                return Ok(res.map_into_boxed_body());
-            }
-
-            let (http_req, http_res) = res.into_parts();
-            let headers = http_res.headers().clone();
-
-            let bytes = body::to_bytes(http_res.into_body())
-                .await
-                .map_err(actix_web::error::ErrorInternalServerError)?;
-
-            let injected = do_inject(bytes.into());
-
-            let mut builder = HttpResponse::build(status);
-            for (name, value) in headers {
-                builder.append_header((name, value));
-            }
-            let new_res = builder.body(injected);
-            Ok(ServiceResponse::new(http_req, new_res))
+            process_request(res).await
         })
     }
 }
 
+async fn process_request<B>(
+    res: ServiceResponse<B>,
+) -> Result<ServiceResponse<BoxBody>, actix_web::Error> where 
+    B: MessageBody + 'static,
+    B::Error: std::fmt::Debug + std::fmt::Display,
+{
+    // don't inject to failure
+    let status = res.status();
+    if status.is_client_error() || status.is_server_error() {
+        return Ok(res.map_into_boxed_body());
+    }
+
+    let is_raw = res.headers().get("x-shwoop-is-raw")
+        .is_some_and(|x| x.as_bytes() == b"1")
+        || res.request().query_string().split('&')
+        .any(|p| p == "x-shwoop-is-raw=1");
+    if is_raw {
+        // requesting raw content, do not inject
+        return Ok(res.map_into_boxed_body());
+    }
+
+    let is_html = res
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| ct.starts_with("text/html"));
+
+    if !is_html {
+        // only inject to html files
+        return Ok(res.map_into_boxed_body());
+    }
+
+    let is_browser = res.request().headers()
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ua| ua.contains("Mozilla") || ua.contains("Chrome") || ua.contains("Safari"));
+    if !is_browser {
+        return Ok(res.map_into_boxed_body());
+    }
+
+    let (http_req, http_res) = res.into_parts();
+    let headers = http_res.headers().clone();
+
+    let bytes = match body::to_bytes(http_res.into_body()).await {
+        Err(e) => {
+            cu::error!("internal error while reading raw html before injection: {e:?}");
+            return Err(actix_web::error::ErrorInternalServerError("unexpected"));
+        }
+        Ok(x) => x
+    };
+
+    let injected = do_inject(bytes.into());
+
+    let mut builder = HttpResponse::build(status);
+    for (name, value) in headers {
+        builder.append_header((name, value));
+    }
+    let new_res = builder.body(injected);
+    Ok(ServiceResponse::new(http_req, new_res))
+}
+
+static WRAPPER: &str = include_str!("../../dist/index.html");
+
 fn do_inject(content: Vec<u8>) -> Vec<u8> {
-    const SCRIPT: &[u8] = concat!(
-        "<script type=\"module\">",
-        include_str!("../../dist/index.js"),
-        "</script>",
-    ).as_bytes();
+    let content_str = String::from_utf8_lossy(&content);
+    let mut output = String::new();
+    let mut rest_wrapper = WRAPPER;
 
-    let insert_pos = content
-        .windows(b"</head>".len())
-        .position(|w| w.eq_ignore_ascii_case(b"</head>"))
-        .unwrap_or(content.len());
+    // Replace <html> in wrapper with the opening <html ...> tag from content
+    // to preserve any attributes (e.g. lang="en")
+    if let Some(html_tag) = extract_html_tag(&content_str) {
+        replace_placeholder(&mut output, &mut rest_wrapper, "<html>", html_tag);
+    }
 
-    let mut result = Vec::with_capacity(content.len() + SCRIPT.len());
-    result.extend_from_slice(&content[..insert_pos]);
-    result.extend_from_slice(SCRIPT);
-    result.extend_from_slice(&content[insert_pos..]);
-    result
+    // If content has a <link rel="icon">, add it to the wrapper's <head>
+    if let Some(link_icon_tag) = extract_link_icon_tag(&content_str) {
+        replace_placeholder(&mut output, &mut rest_wrapper, "<!-- PLACEHOLDER_LINK_ICON -->", link_icon_tag);
+    }
+
+    output.push_str(rest_wrapper);
+    output.into_bytes()
+}
+
+/// Advance the `rest` cursor past `placeholder`, emitting everything before it plus
+/// `replacement` into `output`. Logs an error if the placeholder is not found.
+fn replace_placeholder<'a>(output: &mut String, rest: &mut &'a str, placeholder: &str, replacement: &str) {
+    if let Some(pos) = rest.find(placeholder) {
+        output.push_str(&rest[..pos]);
+        output.push_str(replacement);
+        *rest = &rest[pos + placeholder.len()..];
+    } else {
+        cu::error!("unexpected: did not find {placeholder:?} in wrapper html");
+    }
+}
+
+/// Extract the opening tag of an element, e.g. `<html lang="en">`.
+fn extract_html_tag(html: &str) -> Option<&str> {
+    let start = html.find("<html")?;
+    let end = html[start..].find('>')? + 1;
+    Some(&html[start..start + end])
+}
+
+/// Find the first `<link>` tag with `rel="icon"` or `rel='icon'`.
+fn extract_link_icon_tag<'a>(html: &'a str) -> Option<&'a str> {
+    let mut rest = html;
+    let mut base = 0;
+    loop {
+        let link_pos = rest.find("<link")?;
+        let tag_end = rest[link_pos..].find('>')? + 1;
+        let tag = &rest[link_pos..link_pos + tag_end];
+        if tag.contains("rel=\"icon\"") || tag.contains("rel='icon'") {
+            return Some(&html[base + link_pos..base + link_pos + tag_end]);
+        }
+        base += link_pos + tag_end;
+        rest = &rest[link_pos + tag_end..];
+    }
 }
