@@ -95,14 +95,14 @@ impl Actor for SessionInternal {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        cu::info!("websocket connection [{}] started", self.id);
+        cu::debug!("websocket connection [{}] started", self.id);
         if let Some(send) = self.send.take() {
             let _ = send.send(ctx.address());
         }
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
-        cu::info!("websocket connection [{}] stopped", self.id);
+        cu::debug!("websocket connection [{}] stopped", self.id);
     }
 }
 
@@ -126,7 +126,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SessionInternal {
                 ctx.stop();
             }
             Err(e) => {
-                cu::warn!("ws connection [{}] error: {e}", self.id);
+                cu::debug!("ws connection [{}] error: {e}", self.id);
                 ctx.close(None);
                 ctx.stop();
             }

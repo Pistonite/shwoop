@@ -53,11 +53,6 @@ async fn process_request<B>(
     B: MessageBody + 'static,
     B::Error: std::fmt::Debug + std::fmt::Display,
 {
-    // don't inject to failure
-    let status = res.status();
-    if status.is_client_error() || status.is_server_error() {
-        return Ok(res.map_into_boxed_body());
-    }
 
     let is_raw = res.headers().get("x-shwoop-is-raw")
         .is_some_and(|x| x.as_bytes() == b"1")
@@ -87,6 +82,17 @@ async fn process_request<B>(
         return Ok(res.map_into_boxed_body());
     }
 
+    // if it's a failure - return the error page
+    let status = res.status();
+    if status.is_client_error() || status.is_server_error() {
+        let url = res.request().uri().to_string();
+        let body = error_page(status.as_u16(), status.canonical_reason().unwrap_or("Error"), &url);
+        let new_res = HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(body);
+        return Ok(ServiceResponse::new(res.into_parts().0, new_res));
+    }
+
     let (http_req, http_res) = res.into_parts();
     let headers = http_res.headers().clone();
 
@@ -109,6 +115,14 @@ async fn process_request<B>(
 }
 
 static WRAPPER: &str = include_str!("../../dist/index.html");
+static ERROR_PAGE: &str = include_str!("error.html");
+
+fn error_page(code: u16, text: &str, url: &str) -> String {
+    ERROR_PAGE
+        .replacen("PLACEHOLDER_STATUS_CODE", &code.to_string(), 2)
+        .replacen("PLACEHOLDER_STATUS_TEXT", text, 2)
+        .replacen("PLACEHOLDER_URL", url, 1)
+}
 
 fn do_inject(content: Vec<u8>) -> Vec<u8> {
     let content_str = String::from_utf8_lossy(&content);

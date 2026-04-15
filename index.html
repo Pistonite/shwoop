@@ -12,12 +12,9 @@
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
             border: none; width: 100vw; height: 100vh;
         }
-        iframe.content-active {
-            z-index: 999;
-        }
         div.status-bar {
-            position: fixed; bottom: 20px; left: 0;
-            z-index: 1000;
+            position: fixed; bottom: 20px; left: 0; height: 28px;
+            z-index: 9999;
             font-family: ui-monospace, Menlo, Consolas, monospace;
             font-size: 12px;
             box-sizing: border-box;
@@ -34,11 +31,28 @@
         div.status-bar.green  { color: #8f8; }
         div.status-bar.yellow { color: #ff8; }
         div.status-bar.red    { color: #f88; }
+        div.status-bar.cyan   { color: #8ff; }
+        div.status-bar.orange { color: #fa8; }
+        div.status-bar button {
+            all: unset;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px; height: 20px;
+            border-radius: 3px;
+            font-size: 13px;
+            line-height: 1;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            vertical-align: middle;
+        }
+        div.status-bar button:hover  { background: #3a3a3a; }
+        div.status-bar button:active { background: #4a4a4a; }
     </style>
     <!-- PLACEHOLDER_SERVER_STYLE -->
   </head>
   <body>
-    <div class="status-bar"></div>
+    <div class="status-bar" style="display:hidden"><button class="status-bar-button"></button><button class="status-bar-scroll-restore-button"></button><span class="status-bar-label"></span></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
