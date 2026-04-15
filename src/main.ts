@@ -15,7 +15,7 @@ const main = async () => {
     }
 
     log("starting");
-    status("", "initializing...");
+    status("", "");
     await hotReload(true);
 
     startWebsocketSession(`ws://${HOST}/`, async () => {
@@ -109,6 +109,7 @@ const hotReload = async (isFirst: boolean) => {
         const nextScrollTracker = new ScrollTracker(frame);
         await nextScrollTracker.start();
         prevScrollTracker?.apply(frame);
+        scrollTracker = nextScrollTracker;
         cancel();
     }
 

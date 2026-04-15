@@ -12,19 +12,28 @@ export const startWebsocketSession= (
 ) => {
     let nextBackoffMs = BACKOFF_BASE_MS;
     let totalWaitedMs = 0;
-    const connect = () => {
+    let reloaded = false;
+    const connect = (isFirst: boolean, isRetry: boolean) => {
         status("", "connecting...");
         const ws = new WebSocket(url);
-        let isConnected = false;
 
         ws.addEventListener("open", () => {
-            isConnected = true;
+            if (!isFirst) {
+                status("", "");
+                reloaded = true;
+                // reconnect case, hard reload the page since we are now back online
+                globalThis.location.reload();
+                return;
+            }
             nextBackoffMs = BACKOFF_BASE_MS;
             totalWaitedMs = 0;
             status("green", "connected");
         });
 
         ws.addEventListener("message", (e) => {
+            if (reloaded) {
+                return;
+            }
             if (e.data === "reload") {
                 void reload();
                 return;
@@ -33,14 +42,17 @@ export const startWebsocketSession= (
         });
 
         ws.addEventListener("close", async () => {
-            if (isConnected) {
+            if (reloaded) {
+                return;
+            }
+            // handle reconnect
+            if (!isRetry) {
                 for (let i = BEFORE_RECONNECT_S; i > 0; i--) {
                     status("red", `disconnected - reconnecting in ${i}s`);
                     await sleep(1000);
                 }
+                connect(false, true);
             }
-
-            // handle reconnect
             
             const delay = nextBackoffMs;
             nextBackoffMs = Math.min(nextBackoffMs * 2, BACKOFF_MAX_MS);
@@ -60,9 +72,9 @@ export const startWebsocketSession= (
                 }
                 await sleep(1000);
             }
-            connect();
+            connect(false, true);
         });
     };
-    connect();
+    connect(true, false);
 }
 
