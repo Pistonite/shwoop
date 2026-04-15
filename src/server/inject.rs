@@ -49,15 +49,20 @@ where
 
 async fn process_request<B>(
     res: ServiceResponse<B>,
-) -> Result<ServiceResponse<BoxBody>, actix_web::Error> where 
+) -> Result<ServiceResponse<BoxBody>, actix_web::Error>
+where
     B: MessageBody + 'static,
     B::Error: std::fmt::Debug + std::fmt::Display,
 {
-
-    let is_raw = res.headers().get("x-shwoop-is-raw")
+    let is_raw = res
+        .headers()
+        .get("x-shwoop-is-raw")
         .is_some_and(|x| x.as_bytes() == b"1")
-        || res.request().query_string().split('&')
-        .any(|p| p == "x-shwoop-is-raw=1");
+        || res
+            .request()
+            .query_string()
+            .split('&')
+            .any(|p| p == "x-shwoop-is-raw=1");
     if is_raw {
         // requesting raw content, do not inject
         return Ok(res.map_into_boxed_body());
@@ -74,7 +79,9 @@ async fn process_request<B>(
         return Ok(res.map_into_boxed_body());
     }
 
-    let is_browser = res.request().headers()
+    let is_browser = res
+        .request()
+        .headers()
         .get("user-agent")
         .and_then(|v| v.to_str().ok())
         .is_some_and(|ua| ua.contains("Mozilla") || ua.contains("Chrome") || ua.contains("Safari"));
@@ -86,7 +93,11 @@ async fn process_request<B>(
     let status = res.status();
     if status.is_client_error() || status.is_server_error() {
         let url = res.request().uri().to_string();
-        let body = error_page(status.as_u16(), status.canonical_reason().unwrap_or("Error"), &url);
+        let body = error_page(
+            status.as_u16(),
+            status.canonical_reason().unwrap_or("Error"),
+            &url,
+        );
         let new_res = HttpResponse::Ok()
             .content_type("text/html; charset=utf-8")
             .body(body);
@@ -101,7 +112,7 @@ async fn process_request<B>(
             cu::error!("internal error while reading raw html before injection: {e:?}");
             return Err(actix_web::error::ErrorInternalServerError("unexpected"));
         }
-        Ok(x) => x
+        Ok(x) => x,
     };
 
     let injected = do_inject(bytes.into());
@@ -137,7 +148,12 @@ fn do_inject(content: Vec<u8>) -> Vec<u8> {
 
     // If content has a <link rel="icon">, add it to the wrapper's <head>
     if let Some(link_icon_tag) = extract_link_icon_tag(&content_str) {
-        replace_placeholder(&mut output, &mut rest_wrapper, "<!-- PLACEHOLDER_LINK_ICON -->", link_icon_tag);
+        replace_placeholder(
+            &mut output,
+            &mut rest_wrapper,
+            "<!-- PLACEHOLDER_LINK_ICON -->",
+            link_icon_tag,
+        );
     }
 
     output.push_str(rest_wrapper);
@@ -146,7 +162,12 @@ fn do_inject(content: Vec<u8>) -> Vec<u8> {
 
 /// Advance the `rest` cursor past `placeholder`, emitting everything before it plus
 /// `replacement` into `output`. Logs an error if the placeholder is not found.
-fn replace_placeholder<'a>(output: &mut String, rest: &mut &'a str, placeholder: &str, replacement: &str) {
+fn replace_placeholder<'a>(
+    output: &mut String,
+    rest: &mut &'a str,
+    placeholder: &str,
+    replacement: &str,
+) {
     if let Some(pos) = rest.find(placeholder) {
         output.push_str(&rest[..pos]);
         output.push_str(replacement);

@@ -1,20 +1,29 @@
-
 export type StatusColor = "" | "green" | "red" | "yellow" | "cyan" | "orange";
 
 const TOAST_DURATION_MS = 3000;
 
 const hotReloadButton = document.querySelector(".status-bar-button") as HTMLButtonElement;
-const scrollRestoreButton = document.querySelector(".status-bar-scroll-restore-button") as HTMLButtonElement;
+const scrollRestoreButton = document.querySelector(
+    ".status-bar-scroll-restore-button",
+) as HTMLButtonElement;
 let statusBarElement: HTMLDivElement | null = null;
 let statusBarLabelElement: HTMLSpanElement | null = null;
 
 type Settings = { cold?: boolean; scrollRestoreDisabled?: boolean };
 const STORAGE_KEY = "shwoop-settings";
 const loadSettings = (): Settings => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}"); } catch { return {}; }
+    try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    } catch {
+        return {};
+    }
 };
 const saveSettings = (patch: Partial<Settings>) => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadSettings(), ...patch })); } catch { /* ignore */ }
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadSettings(), ...patch }));
+    } catch {
+        /* ignore */
+    }
 };
 
 let _settings: Settings = {};
@@ -31,10 +40,9 @@ export const initStatusBar = () => {
     _settings = loadSettings();
     statusBarElement = document.querySelector(".status-bar");
     if (statusBarElement) {
-        statusBarElement.style.display="";
+        statusBarElement.style.display = "";
     }
-
-}
+};
 
 export const isHotReload = () => hotReload;
 
@@ -110,9 +118,9 @@ scrollRestoreButton.addEventListener("click", () => {
     saveSettings({ scrollRestoreDisabled: !scrollRestoreEnabled });
     updateScrollRestoreButton();
     if (scrollRestoreEnabled) {
-        toast("green", "scroll restore: on - scroll positions will be restored on reload");
+        toast("green", "state restore: on - some states will be restored on reload");
     } else {
-        toast("red", "scroll restore: off - scroll positions will not be restored on reload");
+        toast("red", "state restore: off - states will not be restored on reload");
     }
 });
 

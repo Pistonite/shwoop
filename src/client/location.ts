@@ -14,7 +14,7 @@ export const handleLocationSwitchInIFrame = (): boolean => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any)["__shwoop_top_page"] = true;
     return false;
-}
+};
 
 const isInWrappedIFrame = (): boolean => {
     try {
@@ -37,7 +37,7 @@ const isInWrappedIFrame = (): boolean => {
         // access error, must mean we are not wrapped
         return false;
     }
-}
+};
 
 export const getUrlWithRawQuery = (l: Location): string => {
     let search = l.search;
@@ -48,4 +48,4 @@ export const getUrlWithRawQuery = (l: Location): string => {
     }
     search += "x-shwoop-is-raw=1";
     return `${l.pathname}${search}${l.hash}`;
-}
+};

@@ -63,7 +63,9 @@ pub fn start(
                                 actix_files::Files::new("/", &serve_path)
                                     .show_files_listing()
                                     .index_file("index.html")
+                                    .redirect_to_slash_directory()
                                     .prefer_utf8(true),
+
                             );
                         }
                     })

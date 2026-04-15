@@ -6,10 +6,7 @@ const BACKOFF_BASE_MS = 3000;
 const BACKOFF_MAX_MS = 30000;
 const BACKOFF_GIVE_UP_MS = 10 * 60 * 1000; // 10 minutes
 
-export const startWebsocketSession= (
-    url: string,
-    reload: () => void | Promise<void>
-) => {
+export const startWebsocketSession = (url: string, reload: () => void | Promise<void>) => {
     let nextBackoffMs = BACKOFF_BASE_MS;
     let totalWaitedMs = 0;
     let reloaded = false;
@@ -38,7 +35,7 @@ export const startWebsocketSession= (
                 void reload();
                 return;
             }
-            error(BIN_NAME,"unknown message",e.data);
+            error(BIN_NAME, "unknown message", e.data);
         });
 
         ws.addEventListener("close", async () => {
@@ -53,7 +50,7 @@ export const startWebsocketSession= (
                 }
                 connect(false, true);
             }
-            
+
             const delay = nextBackoffMs;
             nextBackoffMs = Math.min(nextBackoffMs * 2, BACKOFF_MAX_MS);
             totalWaitedMs += delay;
@@ -76,5 +73,4 @@ export const startWebsocketSession= (
         });
     };
     connect(true, false);
-}
-
+};
