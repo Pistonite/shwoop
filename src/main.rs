@@ -39,40 +39,50 @@ fn main(args: args::Args) -> cu::Result<()> {
         format!("http://localhost:{port}")
     };
 
-    let server_thread = server::start(args.port, !args.host, Arc::clone(&sessions), path.clone());
-    let (reload_sender, reloader_thread) = reloader::start(sessions, args.command);
-    let (stop_send, stop_recv) = oneshot::channel();
-
-    let source_paths = args.watch.into_iter().map(PathBuf::from).collect();
-    let watcher = watcher::start(
-        path,
-        source_paths,
-        watch_for_build,
-        reload_sender,
-        stop_recv,
-    );
-
+    let server_thread = server::start(args.port, args.raw, !args.host, Arc::clone(&sessions), path.clone());
     cu::hint!("webpage hosted at {host_address}");
     if !args.host {
         cu::hint!("use --host to expose the server to local network");
     }
+    if args.raw {
+        cu::hint!("acting as plain server because of --raw; not starting watcher and reloader");
+        // actix will handle the interrupt signal if started successfully
+        let server_result = match server_thread.join() {
+            Ok(x) => x,
+            Err(_) => Err(cu::fmterr!("server thread panicked")),
+        };
+        cu::check!(server_result, "failed to run http server")?;
+    } else {
+        let (reload_sender, reloader_thread) = reloader::start(sessions, args.command);
+        let (stop_send, stop_recv) = oneshot::channel();
 
-    // actix will handle the interrupt signal if started successfully
-    let server_result = match server_thread.join() {
-        Ok(x) => x,
-        Err(_) => Err(cu::fmterr!("server thread panicked")),
-    };
-    // stop and join the watcher
-    let _ = stop_send.send(());
-    let watcher_result = watcher.join();
-    // stop and join the reloader
-    let _ = reloader_thread.join();
+        let source_paths = args.watch.into_iter().map(PathBuf::from).collect();
+        let watcher = watcher::start(
+            path,
+            source_paths,
+            watch_for_build,
+            reload_sender,
+            stop_recv,
+        );
 
-    // prioritize showing error related to the server
-    cu::check!(server_result, "failed to run http server")?;
 
-    // propagate any watchexec errors
-    watcher_result??;
+        // actix will handle the interrupt signal if started successfully
+        let server_result = match server_thread.join() {
+            Ok(x) => x,
+            Err(_) => Err(cu::fmterr!("server thread panicked")),
+        };
+        // stop and join the watcher
+        let _ = stop_send.send(());
+        let watcher_result = watcher.join();
+        // stop and join the reloader
+        let _ = reloader_thread.join();
+
+        // prioritize showing error related to the server
+        cu::check!(server_result, "failed to run http server")?;
+
+        // propagate any watchexec errors
+        watcher_result??;
+    }
     // no need to print time for successful exits
     cu::lv::disable_print_time();
 

@@ -3,13 +3,17 @@ export type StatusColor = "" | "green" | "red" | "yellow" | "cyan" | "orange";
 const TOAST_DURATION_MS = 3000;
 
 const hotReloadButton = document.querySelector(".status-bar-button") as HTMLButtonElement;
-const scrollRestoreButton = document.querySelector(
+const stateRestoreButton = document.querySelector(
     ".status-bar-scroll-restore-button",
 ) as HTMLButtonElement;
 let statusBarElement: HTMLDivElement | null = null;
+let statusBarLabelWrapElement: HTMLSpanElement | null = null;
 let statusBarLabelElement: HTMLSpanElement | null = null;
 
-type Settings = { cold?: boolean; scrollRestoreDisabled?: boolean };
+type Settings = {
+    cold?: boolean;
+    restoreDisabled?: boolean
+};
 const STORAGE_KEY = "shwoop-settings";
 const loadSettings = (): Settings => {
     try {
@@ -28,7 +32,7 @@ const saveSettings = (patch: Partial<Settings>) => {
 
 let _settings: Settings = {};
 let hotReload = !_settings.cold;
-let scrollRestoreEnabled = !_settings.scrollRestoreDisabled;
+let stateRestoreEnabled = !_settings.restoreDisabled;
 
 // The persistent status shown when no toast is active
 let baseColor: StatusColor = "";
@@ -44,7 +48,6 @@ export const initStatusBar = () => {
     }
 };
 
-export const isHotReload = () => hotReload;
 
 export const toast = (color: StatusColor, x: string) => {
     clearTimeout(toastTimer);
@@ -69,39 +72,50 @@ const applyStatus = (color: StatusColor, x: string) => {
     if (!statusBarElement) {
         statusBarElement = document.querySelector(".status-bar");
     }
+    if (!statusBarLabelWrapElement) {
+        statusBarLabelWrapElement = document.querySelector(".status-bar-label-wrap");
+    }
     if (!statusBarLabelElement) {
         statusBarLabelElement = document.querySelector(".status-bar-label");
     }
     const el = statusBarElement;
+    const wrap = statusBarLabelWrapElement;
     const label = statusBarLabelElement;
-    if (!el || !label) {
+    if (!el || !wrap || !label) {
         return;
     }
 
     // Snapshot current width, then measure the target width with new content
-    const prevWidth = el.offsetWidth;
-    el.style.transition = "none";
-    el.style.width = "max-content";
+    const prevWidth = wrap.offsetWidth;
+    wrap.style.transition = "none";
+    wrap.style.width = "max-content";
     label.textContent = BIN_NAME + " " + x;
-    const nextWidth = el.offsetWidth;
+    const nextWidth = wrap.offsetWidth;
 
     // Jump back to prevWidth without animating, then apply class+width together
     // so both color and width transitions fire at the same time
-    el.style.width = prevWidth + "px";
-    void el.offsetWidth; // force reflow
-    el.style.transition = "";
+    wrap.style.width = prevWidth + "px";
+    void wrap.offsetWidth; // force reflow
+    wrap.style.transition = "";
     el.className = `status-bar ${color}`;
-    el.style.width = nextWidth + "px";
+    wrap.style.width = nextWidth + "px";
 };
 
 const updateHotReloadButton = () => {
     hotReloadButton.textContent = hotReload ? "🔥" : "🧊";
 };
+export const isHotReload = () => hotReload;
+const updateStateRestoreButton = () => {
+    stateRestoreButton.textContent = isStateRestoreEnabled() ? "💾" : "🚫";
+};
+export const isStateRestoreEnabled = () => hotReload && stateRestoreEnabled;
+
 updateHotReloadButton();
 hotReloadButton.addEventListener("click", () => {
     hotReload = !hotReload;
     saveSettings({ cold: !hotReload });
     updateHotReloadButton();
+    updateStateRestoreButton();
     if (hotReload) {
         toast("orange", "reload mode: hot - content will be fetched and applied in the background");
     } else {
@@ -109,19 +123,18 @@ hotReloadButton.addEventListener("click", () => {
     }
 });
 
-const updateScrollRestoreButton = () => {
-    scrollRestoreButton.textContent = scrollRestoreEnabled ? "📜" : "🚫";
-};
-updateScrollRestoreButton();
-scrollRestoreButton.addEventListener("click", () => {
-    scrollRestoreEnabled = !scrollRestoreEnabled;
-    saveSettings({ scrollRestoreDisabled: !scrollRestoreEnabled });
-    updateScrollRestoreButton();
-    if (scrollRestoreEnabled) {
+updateStateRestoreButton();
+stateRestoreButton.addEventListener("click", () => {
+    if (!hotReload) {
+        toast("cyan", "state restore is only possible in hot reload mode");
+        return;
+    }
+    stateRestoreEnabled = !stateRestoreEnabled;
+    saveSettings({ restoreDisabled: !stateRestoreEnabled });
+    updateStateRestoreButton();
+    if (stateRestoreEnabled) {
         toast("green", "state restore: on - some states will be restored on reload");
     } else {
         toast("red", "state restore: off - states will not be restored on reload");
     }
 });
-
-export const isScrollRestoreEnabled = () => scrollRestoreEnabled;

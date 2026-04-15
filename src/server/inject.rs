@@ -1,9 +1,16 @@
-use actix_web::HttpResponse;
+use std::borrow::Cow;
+use std::pin::Pin;
+
+use actix_web::{HttpRequest, HttpResponse};
 use actix_web::body::{self, BoxBody, MessageBody};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready};
-use actix_web::http::header::CONTENT_TYPE;
+use actix_web::http::StatusCode;
+use actix_web::http::header::{CONTENT_TYPE, HeaderMap};
 
-pub struct InjectHotReloadMiddleware;
+// --- this bucket of trait soup below is boilerplate for a middleware
+pub struct InjectHotReloadMiddleware {
+    pub enabled: bool,
+}
 impl<S, B> Transform<S, ServiceRequest> for InjectHotReloadMiddleware
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = actix_web::Error> + 'static,
@@ -17,11 +24,12 @@ where
     type Future = std::future::Ready<Result<Self::Transform, ()>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        std::future::ready(Ok(InjectService { service }))
+        std::future::ready(Ok(InjectService { enabled: self.enabled, service }))
     }
 }
 
 pub struct InjectService<S> {
+    enabled: bool,
     service: S,
 }
 
@@ -33,19 +41,23 @@ where
 {
     type Response = ServiceResponse<BoxBody>;
     type Error = actix_web::Error;
-    type Future =
-        std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>>>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let fut = self.service.call(req);
+        let enabled = self.enabled;
         Box::pin(async move {
             let res = fut.await?;
+            if !enabled {
+                return Ok(res.map_into_boxed_body());
+            }
             process_request(res).await
         })
     }
 }
+// --- above trait soup is boilerplate for a middleware
 
 async fn process_request<B>(
     res: ServiceResponse<B>,
@@ -54,59 +66,46 @@ where
     B: MessageBody + 'static,
     B::Error: std::fmt::Debug + std::fmt::Display,
 {
-    let is_raw = res
-        .headers()
-        .get("x-shwoop-is-raw")
-        .is_some_and(|x| x.as_bytes() == b"1")
-        || res
-            .request()
-            .query_string()
-            .split('&')
-            .any(|p| p == "x-shwoop-is-raw=1");
-    if is_raw {
-        // requesting raw content, do not inject
+    if !req_is_browser(res.request()) {
         return Ok(res.map_into_boxed_body());
     }
 
-    let is_html = res
-        .headers()
-        .get(CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|ct| ct.starts_with("text/html"));
-
-    if !is_html {
-        // only inject to html files
-        return Ok(res.map_into_boxed_body());
-    }
-
-    let is_browser = res
-        .request()
-        .headers()
-        .get("user-agent")
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|ua| ua.contains("Mozilla") || ua.contains("Chrome") || ua.contains("Safari"));
-    if !is_browser {
-        return Ok(res.map_into_boxed_body());
-    }
-
-    // if it's a failure - return the error page
     let status = res.status();
     if status.is_client_error() || status.is_server_error() {
-        let url = res.request().uri().to_string();
-        let body = error_page(
-            status.as_u16(),
-            status.canonical_reason().unwrap_or("Error"),
-            &url,
-        );
-        let new_res = HttpResponse::Ok()
-            .content_type("text/html; charset=utf-8")
-            .body(body);
-        return Ok(ServiceResponse::new(res.into_parts().0, new_res));
+        // handle error case
+        if is_html_path(res.request().path()) {
+            // if the error looks like a request to a page that might not exist yet
+            // return an error page
+            if res_is_raw(&res) {
+                // fabricate an error page to return as a raw error page
+                let url = res.request().path().to_string();
+                let body = make_error_page(
+                    status.as_u16(),
+                    status.canonical_reason().unwrap_or("Error"),
+                    &url,
+                );
+                let (http_req, http_res) = res.into_parts();
+                let headers = http_res.headers().clone();
+                return Ok(build_response(http_req, StatusCode::OK, headers, body));
+            }
+            // error page but not requesting raw, make a placeholder wrapper
+            // that supports reloading the page when it comes live
+            let body = do_inject("".into());
+            let (http_req, http_res) = res.into_parts();
+            let headers = http_res.headers().clone();
+            return Ok(build_response(http_req, StatusCode::OK, headers, body));
+        }
+        // non-html error, just return failure response as is
+        return Ok(res.map_into_boxed_body());
+    }
+
+    // successfully found the resource
+    if !res_is_html(&res) || res_is_raw(&res) {
+        return Ok(res.map_into_boxed_body());
     }
 
     let (http_req, http_res) = res.into_parts();
     let headers = http_res.headers().clone();
-
     let bytes = match body::to_bytes(http_res.into_body()).await {
         Err(e) => {
             cu::error!("internal error while reading raw html before injection: {e:?}");
@@ -114,29 +113,84 @@ where
         }
         Ok(x) => x,
     };
+    let bytes: Vec<u8> = bytes.into();
+    let body_injected = do_inject(String::from_utf8_lossy(&bytes));
 
-    let injected = do_inject(bytes.into());
+    Ok(build_response(http_req, status, headers, body_injected))
+}
 
+fn build_response(
+    http_req: HttpRequest,
+    status: StatusCode,
+    headers: HeaderMap,
+    body: String,
+) -> ServiceResponse {
     let mut builder = HttpResponse::build(status);
     for (name, value) in headers {
         builder.append_header((name, value));
     }
-    let new_res = builder.body(injected);
-    Ok(ServiceResponse::new(http_req, new_res))
+    let res = builder.body(body);
+    ServiceResponse::new(http_req, res)
+}
+
+/// Check if request looks like it's coming from a browser
+fn req_is_browser(req: &actix_web::HttpRequest) -> bool {
+    req.headers()
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ua| ua.contains("Mozilla") || ua.contains("Chrome") || ua.contains("Safari"))
+}
+
+/// Check if the request is requesting a raw file
+fn res_is_raw<B>(res: &ServiceResponse<B>) -> bool {
+    if res.headers()
+        .get("x-shwoop-is-raw")
+        .is_some_and(|x| x.as_bytes() == b"1") {
+        return true;
+    }
+        res
+            .request()
+            .query_string()
+            .split('&')
+            .any(|p| p == "x-shwoop-is-raw=1")
+}
+
+/// Check if the request is a success HTML file
+fn res_is_html<B>(res: &ServiceResponse<B>) -> bool {
+    res.headers()
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| ct.starts_with("text/html"))
+}
+
+/// Returns true if the path looks like a navigable HTML page (ends with `/`,
+/// has a `.html` extension, or has no extension), so we only serve the error
+/// page for those, not for assets like CSS or JS.
+fn is_html_path(path: &str) -> bool {
+    if path.ends_with('/') {
+        return true;
+    }
+    let last_segment = path.rsplit('/').next().unwrap_or(path);
+    match last_segment.rfind('.') {
+        Some(dot) => {
+            let ext = &last_segment[dot..];
+            ext.eq_ignore_ascii_case(".html") || ext.eq_ignore_ascii_case(".htm")
+        }
+        None => true,
+    }
 }
 
 static WRAPPER: &str = include_str!("../../dist/index.html");
 static ERROR_PAGE: &str = include_str!("error.html");
 
-fn error_page(code: u16, text: &str, url: &str) -> String {
+fn make_error_page(code: u16, text: &str, url: &str) -> String {
     ERROR_PAGE
         .replacen("PLACEHOLDER_STATUS_CODE", &code.to_string(), 2)
         .replacen("PLACEHOLDER_STATUS_TEXT", text, 2)
         .replacen("PLACEHOLDER_URL", url, 1)
 }
 
-fn do_inject(content: Vec<u8>) -> Vec<u8> {
-    let content_str = String::from_utf8_lossy(&content);
+fn do_inject(content_str: Cow<'_, str>) -> String {
     let mut output = String::new();
     let mut rest_wrapper = WRAPPER;
 
@@ -157,7 +211,7 @@ fn do_inject(content: Vec<u8>) -> Vec<u8> {
     }
 
     output.push_str(rest_wrapper);
-    output.into_bytes()
+    output
 }
 
 /// Advance the `rest` cursor past `placeholder`, emitting everything before it plus

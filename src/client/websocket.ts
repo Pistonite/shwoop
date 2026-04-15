@@ -48,26 +48,25 @@ export const startWebsocketSession = (url: string, reload: () => void | Promise<
                     status("red", `disconnected - reconnecting in ${i}s`);
                     await sleep(1000);
                 }
-                connect(false, true);
-            }
+            } else {
+                const delay = nextBackoffMs;
+                nextBackoffMs = Math.min(nextBackoffMs * 2, BACKOFF_MAX_MS);
+                totalWaitedMs += delay;
 
-            const delay = nextBackoffMs;
-            nextBackoffMs = Math.min(nextBackoffMs * 2, BACKOFF_MAX_MS);
-            totalWaitedMs += delay;
-
-            if (totalWaitedMs >= BACKOFF_GIVE_UP_MS) {
-                status("red", "refresh to restart hot-reload");
-                return;
-            }
-
-            const secs = Math.ceil(delay / 1000);
-            for (let secsLeft = secs; secsLeft > 0; secsLeft--) {
-                if (secs > 5) {
-                    status("yellow", `retrying in ${secsLeft}s (or refresh to reload)`);
-                } else {
-                    status("yellow", `retrying in ${secsLeft}s`);
+                if (totalWaitedMs >= BACKOFF_GIVE_UP_MS) {
+                    status("red", "refresh to restart hot-reload");
+                    return;
                 }
-                await sleep(1000);
+
+                const secs = Math.ceil(delay / 1000);
+                for (let secsLeft = secs; secsLeft > 0; secsLeft--) {
+                    if (secs > 5) {
+                        status("yellow", `retrying in ${secsLeft}s (or refresh to reload)`);
+                    } else {
+                        status("yellow", `retrying in ${secsLeft}s`);
+                    }
+                    await sleep(1000);
+                }
             }
             connect(false, true);
         });

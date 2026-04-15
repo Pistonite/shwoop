@@ -26,15 +26,20 @@
       border-radius: 8px;
       background: #1a1a1a;
     }
+    .status {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
     .code {
-      font-size: 64px;
+      font-size: 32px;
       font-weight: 700;
       line-height: 1;
       color: #f88;
-      letter-spacing: -2px;
+      letter-spacing: -1px;
     }
     .text {
-      font-size: 18px;
+      font-size: 14px;
       color: #eee;
       letter-spacing: 0.04em;
       text-transform: uppercase;
@@ -48,14 +53,21 @@
       color: #666;
       word-break: break-all;
     }
+    .hint {
+      font-size: 11px;
+      color: #4a4;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="code">PLACEHOLDER_STATUS_CODE</div>
-    <div class="text">PLACEHOLDER_STATUS_TEXT</div>
+    <div class="status">
+      <div class="code">PLACEHOLDER_STATUS_CODE</div>
+      <div class="text">PLACEHOLDER_STATUS_TEXT</div>
+    </div>
     <div class="divider"></div>
     <div class="url">PLACEHOLDER_URL</div>
+    <div class="hint">(this page will automatically reload when the resource becomes available)</div>
   </div>
 </body>
 </html>

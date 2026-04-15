@@ -1,4 +1,4 @@
-import { isHotReload, status, toast } from "./client/status_bar.ts";
+import { isHotReload, isStateRestoreEnabled, status, toast } from "./client/status_bar.ts";
 import { StateTracker } from "./client/tracker.ts";
 import { delayed, HOST, log } from "./client/util.ts";
 import { startWebsocketSession } from "./client/websocket.ts";
@@ -102,7 +102,7 @@ const hotReload = async (isFirst: boolean) => {
         }
     }
 
-    {
+    if (isStateRestoreEnabled()) {
         const cancel = delayed(() => {
             if (!isFirst) {
                 status("yellow", "reloading: restoring state...");

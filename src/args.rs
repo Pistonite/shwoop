@@ -24,6 +24,10 @@ pub struct Args {
     #[clap(long)]
     pub host: bool,
 
+    /// Serve the content without watching for changes or hot-reloading
+    #[clap(long, conflicts_with = "watch")]
+    pub raw: bool,
+
     /// Additional (source) directories to watch for changes.
     ///
     /// Usually used together with a build command. When changes are
@@ -64,6 +68,7 @@ mod tests {
                 path: ".".into(),
                 port: 8241,
                 host: false,
+                raw: false,
                 watch: vec![],
                 flags: default_flags(),
                 command: vec![],
@@ -79,6 +84,7 @@ mod tests {
                 path: ".".into(),
                 port: 8241,
                 host: false,
+                raw: false,
                 watch: vec![],
                 flags: default_flags(),
                 command: vec!["hello".into()],
@@ -94,6 +100,7 @@ mod tests {
                 path: ".".into(),
                 port: 12345,
                 host: false,
+                raw: false,
                 watch: vec!["foo".into()],
                 flags: default_flags(),
                 command: vec!["hello".into(), "bar".into()],
@@ -110,9 +117,26 @@ mod tests {
                 path: ".".into(),
                 port: 12345,
                 host: false,
+                raw: false,
                 watch: vec!["foo".into()],
                 flags: verbose_flags(),
                 command: vec!["hello".into(), "bar".into()],
+            }
+        );
+    }
+
+    #[test]
+    fn test_raw_flag() {
+        assert_eq!(
+            Args::try_parse_from(["", ".", "--raw"]).unwrap(),
+            Args {
+                path: ".".into(),
+                port: 8241,
+                host: false,
+                raw: true,
+                watch: vec![],
+                flags: default_flags(),
+                command: vec![],
             }
         );
     }
