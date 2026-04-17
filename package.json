@@ -4,7 +4,7 @@
     "type": "module",
     "description": "WebSocket client to reload the page",
     "devDependencies": {
-        "@zhoumutou/vite-plugin-inline": "^0.4.2",
+        "@types/node": "^25.6.0",
         "eslint": "^9.39.4",
         "mono-dev": "link:../mono-dev"
     }

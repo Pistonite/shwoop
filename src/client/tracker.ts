@@ -31,7 +31,7 @@ export class StateTracker {
 
     constructor(
         private rootFrame: HTMLIFrameElement,
-        private lastStabilizationMs: number | undefined
+        private lastStabilizationMs: number | undefined,
     ) {
         this.controller = new AbortController();
         this.state = new Map();
@@ -52,9 +52,12 @@ export class StateTracker {
             toast("red", "failed to get top-frame body, state will not be tracked");
             return false;
         }
-        const stabilizationDebounceMs = this.lastStabilizationMs ? this.lastStabilizationMs * 2 : STABILIZE_DEBOUNCE_MS;
+        const stabilizationDebounceMs = this.lastStabilizationMs
+            ? this.lastStabilizationMs * 2
+            : STABILIZE_DEBOUNCE_MS;
         if (!(await this.waitForStabilization(rootBody, stabilizationDebounceMs))) {
-            toast("red",
+            toast(
+                "red",
                 `the document structure did not stablize after ${stabilizationDebounceMs}, state will not be tracked`,
             );
             return false;
@@ -72,20 +75,24 @@ export class StateTracker {
 
         const startTime = performance.now();
         let elemCount = 0;
-        rootBody.addEventListener("scroll", () => {
-            const sTop = rootBody.scrollTop;
-            const sLeft = rootBody.scrollLeft;
-            if (sTop || sLeft) {
-                this.state.set("", {
-                    id: "",
-                    tag: "",
-                    scrollTop: sTop,
-                    scrollLeft: sLeft,
-                });
-            } else {
-                this.state.delete("");
-            }
-        }, {passive:true, signal: this.controller.signal});
+        this.rootFrame.contentWindow?.addEventListener(
+            "scroll",
+            () => {
+                const sTop = rootBody.scrollTop;
+                const sLeft = rootBody.scrollLeft;
+                if (sTop || sLeft) {
+                    this.state.set("", {
+                        id: "",
+                        tag: "",
+                        scrollTop: sTop,
+                        scrollLeft: sLeft,
+                    });
+                } else {
+                    this.state.delete("");
+                }
+            },
+            { passive: true, signal: this.controller.signal },
+        );
 
         try {
             const stack: StackItem[] = [];
@@ -139,11 +146,11 @@ export class StateTracker {
                             if (!e) {
                                 continue;
                             }
-                                stack.push({
-                                    elem: e,
-                                    path: `${path}-${i}`,
-                                    tag: `${tag}>${e.tagName.toLowerCase()}`,
-                                });
+                            stack.push({
+                                elem: e,
+                                path: `${path}-${i}`,
+                                tag: `${tag}>${e.tagName.toLowerCase()}`,
+                            });
                         }
                     }
                     processed++;
@@ -163,13 +170,14 @@ export class StateTracker {
                     return false;
                 }
                 if (this.changedWhileStarting) {
-                    toast("red",
+                    toast(
+                        "red",
                         `the document structure changed while states are being tracked, state will not be tracked for the remaining elements.`,
                     );
                     break;
                 }
             }
-        } catch(e) {
+        } catch (e) {
             error(e);
         } finally {
             mutationWhileAddingElementObserver.disconnect();
@@ -187,10 +195,15 @@ export class StateTracker {
             return;
         }
         let elemCount = 0;
-        for (const [path, entry
-    ] of this.state) {
-            console.log(path, entry);
-        const { id, tag, scrollTop, scrollLeft } = entry;
+        let windowScrollTop = 0;
+        let windowScrollLeft = 0;
+        for (const [path, entry] of this.state) {
+            const { id, tag, scrollTop, scrollLeft } = entry;
+            if (!path) {
+                windowScrollTop = scrollTop;
+                windowScrollLeft = scrollLeft;
+                continue;
+            }
             const elem = checkedElementAtPath(frame, body, id, path, tag);
             if (!elem) {
                 continue;
@@ -205,6 +218,10 @@ export class StateTracker {
             elemCount++;
         }
         log(`applied state for ${elemCount} nodes`);
+        if (windowScrollTop || windowScrollLeft) {
+            frame.contentWindow?.scrollTo(windowScrollLeft, windowScrollTop);
+            log("applied window scroll");
+        }
     }
 
     /**
@@ -215,39 +232,37 @@ export class StateTracker {
         return iframeElemCast(this.rootFrame, e, clazz);
     }
 
-/**
- * Wait for the document structure to stabilize (no childList mutations for
- * STABILIZE_DEBOUNCE_MS). Returns false if the document is still changing
- * after STABILIZE_TIMEOUT_MS, or if the signal is aborted.
- */
-private waitForStabilization(root: Node, debounceMs: number): Promise<boolean> {
-    const waitStart = performance.now();
-    let waitEnd = waitStart;
-    return new Promise<boolean>((resolve) => {
-        let debounceTimer: ReturnType<typeof setTimeout> | undefined = undefined;
-        const done = (result: boolean) => {
-            clearTimeout(debounceTimer);
-            clearTimeout(absoluteTimer);
-            observer.disconnect();
+    /**
+     * Wait for the document structure to stabilize (no childList mutations for
+     * STABILIZE_DEBOUNCE_MS). Returns false if the document is still changing
+     * after STABILIZE_TIMEOUT_MS, or if the signal is aborted.
+     */
+    private waitForStabilization(root: Node, debounceMs: number): Promise<boolean> {
+        const waitStart = performance.now();
+        let waitEnd = waitStart;
+        return new Promise<boolean>((resolve) => {
+            let debounceTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+            const done = (result: boolean) => {
+                clearTimeout(debounceTimer);
+                clearTimeout(absoluteTimer);
+                observer.disconnect();
                 this.lastStabilizationMs = waitEnd - waitStart;
-            resolve(result);
-        };
-        const absoluteTimer = setTimeout(() => done(false), STABILIZE_TIMEOUT_MS);
-        const resetDebounce = () => {
+                resolve(result);
+            };
+            const absoluteTimer = setTimeout(() => done(false), STABILIZE_TIMEOUT_MS);
+            const resetDebounce = () => {
                 waitEnd = performance.now();
-            clearTimeout(debounceTimer);
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => done(true), debounceMs);
+            };
+            const observer = new MutationObserver(resetDebounce);
+            observer.observe(root, { childList: true, subtree: true });
+            this.controller.signal.addEventListener("abort", () => done(false), { once: true });
+            // Kick off the debounce immediately in case the doc is already stable
             debounceTimer = setTimeout(() => done(true), debounceMs);
-        };
-        const observer = new MutationObserver(resetDebounce);
-        observer.observe(root, { childList: true, subtree: true });
-        this.controller.signal.addEventListener("abort", () => done(false), { once: true });
-        // Kick off the debounce immediately in case the doc is already stable
-            debounceTimer = setTimeout(() => done(true), debounceMs);
-    });
-};
-
+        });
+    }
 }
-
 
 const safeGetFrameDocuemnt = (frame: HTMLIFrameElement): Document | null => {
     try {
@@ -277,7 +292,7 @@ const checkedElementAtPath = (
     tag: string,
 ): HTMLElement | null => {
     if (!path) {
-        return body;
+        return null;
     }
     const pathStack = path.split("-");
     const tagStack = tag.split(">");
@@ -301,36 +316,40 @@ const checkedElementAtPath = (
     }
     return cur;
 };
-    /**
-     * Cast e to a sub HTMLElement type. This is needed because each frame has a different HTMLElement class
-     * so we need to use the frame's class to do the instanceof check
-     */
-    const iframeElemCast = <T extends Element>(frame: HTMLIFrameElement, e: Element | null, clazz: Class<T>): T | null => {
-        if (!e) {
-            return null;
-        }
-        if (e instanceof clazz) {
-            return e;
-        }
-        const name = clazz.name;
-        try {
-            const iframeWindow = frame.contentWindow;
-            if (!iframeWindow) {
-                return null;
-            }
-            if (!(name in iframeWindow)) {
-                return null;
-            }
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const iframeClass = (iframeWindow as any)[name];
-            if (typeof iframeClass !== "function") {
-                return null;
-            }
-            if (e instanceof iframeClass) {
-                return e as T;
-            };
-        } catch {
-            // fallthrough
-        }
+/**
+ * Cast e to a sub HTMLElement type. This is needed because each frame has a different HTMLElement class
+ * so we need to use the frame's class to do the instanceof check
+ */
+const iframeElemCast = <T extends Element>(
+    frame: HTMLIFrameElement,
+    e: Element | null,
+    clazz: Class<T>,
+): T | null => {
+    if (!e) {
         return null;
     }
+    if (e instanceof clazz) {
+        return e;
+    }
+    const name = clazz.name;
+    try {
+        const iframeWindow = frame.contentWindow;
+        if (!iframeWindow) {
+            return null;
+        }
+        if (!(name in iframeWindow)) {
+            return null;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const iframeClass = (iframeWindow as any)[name];
+        if (typeof iframeClass !== "function") {
+            return null;
+        }
+        if (e instanceof iframeClass) {
+            return e as T;
+        }
+    } catch {
+        // fallthrough
+    }
+    return null;
+};

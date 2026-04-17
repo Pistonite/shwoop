@@ -21,7 +21,7 @@ tasks:
 
   run:
     - task: ecma:app-build
-    - cargo run -- {{.CLI_ARGS}}
+    - cargo run --release -- {{.CLI_ARGS}}
     
 
   check:

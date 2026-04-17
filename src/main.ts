@@ -8,6 +8,8 @@ let stateTracker: StateTracker | undefined = undefined;
 let prevFrame: HTMLIFrameElement | undefined = undefined;
 let nextZIndex = 100;
 
+log(`js start: ${Math.floor(performance.now())}ms`);
+
 const main = async () => {
     if (handleLocationSwitchInIFrame()) {
         return;
@@ -84,6 +86,9 @@ const hotReload = async (isFirst: boolean) => {
         document.body.append(frame);
 
         await frameLoadedPromise;
+        if (isFirst) {
+            status("", `rendered in ${Math.floor(performance.now())}ms`)
+        }
         cancel();
     }
 

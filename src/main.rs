@@ -39,7 +39,13 @@ fn main(args: args::Args) -> cu::Result<()> {
         format!("http://localhost:{port}")
     };
 
-    let server_thread = server::start(args.port, args.raw, !args.host, Arc::clone(&sessions), path.clone());
+    let server_thread = server::start(
+        args.port,
+        args.raw,
+        !args.host,
+        Arc::clone(&sessions),
+        path.clone(),
+    );
     cu::hint!("webpage hosted at {host_address}");
     if !args.host {
         cu::hint!("use --host to expose the server to local network");
@@ -64,7 +70,6 @@ fn main(args: args::Args) -> cu::Result<()> {
             reload_sender,
             stop_recv,
         );
-
 
         // actix will handle the interrupt signal if started successfully
         let server_result = match server_thread.join() {

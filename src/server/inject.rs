@@ -1,15 +1,26 @@
 use std::borrow::Cow;
 use std::pin::Pin;
+use std::sync::Arc;
 
-use actix_web::{HttpRequest, HttpResponse};
 use actix_web::body::{self, BoxBody, MessageBody};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready};
 use actix_web::http::StatusCode;
 use actix_web::http::header::{CONTENT_TYPE, HeaderMap};
+use actix_web::{HttpRequest, HttpResponse};
+use dashmap::DashMap;
 
 // --- this bucket of trait soup below is boilerplate for a middleware
 pub struct InjectHotReloadMiddleware {
-    pub enabled: bool,
+    enabled: bool,
+    // cache: Arc<DashMap<String, String>>
+}
+impl InjectHotReloadMiddleware {
+    pub fn new(enabled: bool, cache: Arc<DashMap<String, String>>) -> Self {
+        Self {
+            enabled,
+            // cache,
+        }
+    }
 }
 impl<S, B> Transform<S, ServiceRequest> for InjectHotReloadMiddleware
 where
@@ -24,12 +35,18 @@ where
     type Future = std::future::Ready<Result<Self::Transform, ()>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        std::future::ready(Ok(InjectService { enabled: self.enabled, service }))
+        cu::info!("creating hot reload middleware transform");
+        std::future::ready(Ok(InjectService {
+            enabled: self.enabled,
+            // cache: Arc::clone(&self.cache),
+            service,
+        }))
     }
 }
 
 pub struct InjectService<S> {
     enabled: bool,
+    // cache: Arc<DashMap<String, String>>,
     service: S,
 }
 
@@ -45,8 +62,19 @@ where
 
     forward_ready!(service);
 
-    fn call(&self, req: ServiceRequest) -> Self::Future {
-        let fut = self.service.call(req);
+    fn call(&self, sreq: ServiceRequest) -> Self::Future {
+        let req = sreq.request();
+        if !req_is_browser(req) {
+            let fut = self.service.call(sreq);
+            return Box::pin(async move {
+                let res = fut.await?;
+                Ok(res.map_into_boxed_body())
+            });
+        }
+        // if is_html_path(req.path()) && !req_is_raw(req) {
+        //     if self.cache.get(req.path()) {
+        //     }
+        // }
         let enabled = self.enabled;
         Box::pin(async move {
             let res = fut.await?;
@@ -78,11 +106,11 @@ where
             // return an error page
             if res_is_raw(&res) {
                 // fabricate an error page to return as a raw error page
-                let url = res.request().path().to_string();
+                let pathname = res.request().path().to_string();
                 let body = make_error_page(
                     status.as_u16(),
                     status.canonical_reason().unwrap_or("Error"),
-                    &url,
+                    &pathname,
                 );
                 let (http_req, http_res) = res.into_parts();
                 let headers = http_res.headers().clone();
@@ -90,7 +118,7 @@ where
             }
             // error page but not requesting raw, make a placeholder wrapper
             // that supports reloading the page when it comes live
-            let body = do_inject("".into());
+            let body = do_inject("".into(), "");
             let (http_req, http_res) = res.into_parts();
             let headers = http_res.headers().clone();
             return Ok(build_response(http_req, StatusCode::OK, headers, body));
@@ -104,6 +132,7 @@ where
         return Ok(res.map_into_boxed_body());
     }
 
+    let pathname = res.request().path().to_string();
     let (http_req, http_res) = res.into_parts();
     let headers = http_res.headers().clone();
     let bytes = match body::to_bytes(http_res.into_body()).await {
@@ -113,8 +142,7 @@ where
         }
         Ok(x) => x,
     };
-    let bytes: Vec<u8> = bytes.into();
-    let body_injected = do_inject(String::from_utf8_lossy(&bytes));
+    let body_injected = do_inject(String::from_utf8_lossy(&bytes), &pathname);
 
     Ok(build_response(http_req, status, headers, body_injected))
 }
@@ -134,7 +162,7 @@ fn build_response(
 }
 
 /// Check if request looks like it's coming from a browser
-fn req_is_browser(req: &actix_web::HttpRequest) -> bool {
+fn req_is_browser(req: &HttpRequest) -> bool {
     req.headers()
         .get("user-agent")
         .and_then(|v| v.to_str().ok())
@@ -142,17 +170,10 @@ fn req_is_browser(req: &actix_web::HttpRequest) -> bool {
 }
 
 /// Check if the request is requesting a raw file
-fn res_is_raw<B>(res: &ServiceResponse<B>) -> bool {
-    if res.headers()
-        .get("x-shwoop-is-raw")
-        .is_some_and(|x| x.as_bytes() == b"1") {
-        return true;
-    }
-        res
-            .request()
-            .query_string()
-            .split('&')
-            .any(|p| p == "x-shwoop-is-raw=1")
+fn req_is_raw(req: &HttpRequest) -> bool {
+    req.query_string()
+        .split('&')
+        .any(|p| p == "x-shwoop-is-raw=1")
 }
 
 /// Check if the request is a success HTML file
@@ -190,7 +211,7 @@ fn make_error_page(code: u16, text: &str, url: &str) -> String {
         .replacen("PLACEHOLDER_URL", url, 1)
 }
 
-fn do_inject(content_str: Cow<'_, str>) -> String {
+fn do_inject(content_str: Cow<'_, str>, path: &str) -> String {
     let mut output = String::new();
     let mut rest_wrapper = WRAPPER;
 
@@ -209,6 +230,16 @@ fn do_inject(content_str: Cow<'_, str>) -> String {
             link_icon_tag,
         );
     }
+
+    // if !path.is_empty() {
+    //     replace_placeholder(
+    //         &mut output,
+    //         &mut rest_wrapper,
+    //         "<!-- PLACEHOLDER_PRELOAD -->",
+    //         &format!(r#"<link rel="preload" href="{path}?x-shwoop-is-raw=1" as="document">"#),
+    //     );
+    //
+    // }
 
     output.push_str(rest_wrapper);
     output

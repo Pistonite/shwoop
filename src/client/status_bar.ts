@@ -12,7 +12,7 @@ let statusBarLabelElement: HTMLSpanElement | null = null;
 
 type Settings = {
     cold?: boolean;
-    restoreDisabled?: boolean
+    restoreDisabled?: boolean;
 };
 const STORAGE_KEY = "shwoop-settings";
 const loadSettings = (): Settings => {
@@ -47,7 +47,6 @@ export const initStatusBar = () => {
         statusBarElement.style.display = "";
     }
 };
-
 
 export const toast = (color: StatusColor, x: string) => {
     clearTimeout(toastTimer);

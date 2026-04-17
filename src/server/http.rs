@@ -16,6 +16,21 @@ struct ServerState {
     serve_path: PathBuf,
 }
 
+// note on chunk name:
+// Ideally, the JS should be inlined into the HTML, so the server only
+// needs to route HTML pages through the wrapper page for hot-reload to work.
+// The wrapper HTML would be self-contained, and the server doesn't need
+// additional routes to handle hot-reload related files (since they
+// could collide with the actual files to serve).
+// However, there is just one issue - when inlining the script directly
+// into a script tag and inlining the sourcemap as a data URL into the script,
+// the source label stops working. All lines got mapped to the last line of main.ts
+// for some reason.
+// I don't have time to fix it right now, so here's a workaround to make
+// a path that's unlikely to collide, and have the server serve the JS
+// and the source map
+static JS_CHUNK_NAME: &str = "bf52606e-9f65-4f5e-8a2f-016ad7cfa92a_please_dont_collide";
+
 pub fn start(
     port: u16,
     raw: bool,
@@ -43,6 +58,8 @@ pub fn start(
             HttpServer::new(move || {
                 cu::cli::set_thread_name(ThreadName::Server);
                 let serve_path = state.serve_path.clone();
+                let js_chunk_path = format!("/{JS_CHUNK_NAME}.js");
+                let js_sourcemap_path = format!("/{JS_CHUNK_NAME}.js.map");
                 App::new()
                     .app_data(state.clone())
                     .route(
@@ -50,6 +67,14 @@ pub fn start(
                         web::get()
                             .guard(guard::fn_guard(server::is_websocket_upgrade))
                             .to(websocket_handler),
+                    )
+                    .route(
+                        &js_chunk_path,
+                        web::get().to(js_chunk_handler)
+                    )
+                    .route(
+                        &js_sourcemap_path,
+                        web::get().to(js_sourcemap_handler)
                     )
                     .configure(move |cfg| {
                         if is_file {
@@ -66,12 +91,11 @@ pub fn start(
                                     .index_file("index.html")
                                     .redirect_to_slash_directory()
                                     .prefer_utf8(true),
-
                             );
                         }
                     })
                     .wrap(DefaultHeaders::new().add(("Cache-Control", "no-store")))
-                    .wrap(InjectHotReloadMiddleware{enabled: !raw})
+                    .wrap(InjectHotReloadMiddleware::new(!raw))
                     .wrap(Logger::new("%s - %r"))
             })
             .workers(num_workers)
@@ -100,4 +124,11 @@ async fn single_file_handler(
     state: web::Data<ServerState>,
 ) -> Result<HttpResponse, actix_web::Error> {
     Ok(NamedFile::open(&state.serve_path)?.into_response(&req))
+}
+
+async fn js_chunk_handler() -> HttpResponse {
+    HttpResponse::Ok().append_header(("Content-Type", "text/javascript")).body(include_str!("../../dist/bf52606e-9f65-4f5e-8a2f-016ad7cfa92a_please_dont_collide.js"))
+}
+async fn js_sourcemap_handler() -> HttpResponse {
+    HttpResponse::Ok().body(include_str!("../../dist/bf52606e-9f65-4f5e-8a2f-016ad7cfa92a_please_dont_collide.js.map"))
 }

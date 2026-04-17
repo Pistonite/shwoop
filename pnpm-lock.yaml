@@ -8,9 +8,12 @@ importers:
 
   .:
     devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
       '@zhoumutou/vite-plugin-inline':
         specifier: ^0.4.2
-        version: 0.4.2(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(vite@7.3.2)
+        version: 0.4.2(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(vite@7.3.2(@types/node@25.6.0))
       eslint:
         specifier: ^9.39.4
         version: 9.39.4
@@ -485,6 +488,9 @@ packages:
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
+  '@types/node@25.6.0':
+    resolution: {integrity: sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ==}
+
   '@zhoumutou/vite-plugin-inline@0.4.2':
     resolution: {integrity: sha512-O7lH6YAJaJWMIU/v7Bqv8LbCqb7WbZQ21OQBENlwZkIZ5EeS54ddi7Fmlx7Wiz/knMeZ7gnjGgHn7SGZUumF+Q==}
     engines: {node: '>=22.0.0'}
@@ -807,6 +813,9 @@ packages:
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
+
+  undici-types@7.19.2:
+    resolution: {integrity: sha512-qYVnV5OEm2AW8cJMCpdV20CDyaN3g0AjDlOGf1OW4iaDEx8MwdtChUp4zu4H0VP3nDRF/8RKWH+IPp9uW0YGZg==}
 
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
@@ -1159,10 +1168,14 @@ snapshots:
 
   '@types/json-schema@7.0.15': {}
 
-  '@zhoumutou/vite-plugin-inline@0.4.2(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(vite@7.3.2)':
+  '@types/node@25.6.0':
+    dependencies:
+      undici-types: 7.19.2
+
+  '@zhoumutou/vite-plugin-inline@0.4.2(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(vite@7.3.2(@types/node@25.6.0))':
     dependencies:
       rolldown: 1.0.0-beta.43(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
-      vite: 7.3.2
+      vite: 7.3.2(@types/node@25.6.0)
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'
@@ -1530,11 +1543,13 @@ snapshots:
     dependencies:
       prelude-ls: 1.2.1
 
+  undici-types@7.19.2: {}
+
   uri-js@4.4.1:
     dependencies:
       punycode: 2.3.1
 
-  vite@7.3.2:
+  vite@7.3.2(@types/node@25.6.0):
     dependencies:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
@@ -1543,6 +1558,7 @@ snapshots:
       rollup: 4.60.1
       tinyglobby: 0.2.16
     optionalDependencies:
+      '@types/node': 25.6.0
       fsevents: 2.3.3
 
   which@2.0.2:
