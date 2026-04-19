@@ -23,6 +23,9 @@ tasks:
     - task: ecma:app-build
     - cargo build {{.CLI_ARGS}}
 
+  build-client:
+    - task: ecma:app-build
+
   run:
     - task: ecma:app-build
     - cargo run -- {{.CLI_ARGS}}

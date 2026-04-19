@@ -17,6 +17,7 @@ jobs:
           ecma-pnpm: true
           rust: stable
       - run: pnpm install
+      - run: task build-client
       - run: task check
       - run: task test
   build:
