@@ -51,6 +51,7 @@ pub async fn websocket(
 
 // see comment in vite.config.ts
 #[path = "../../dist/metadata.rs"]
+#[rustfmt::skip]
 mod js_metadata;
 pub fn js_source_path() -> &'static str {
     js_metadata::JS_SOURCEMAP_PATH.strip_suffix(".map").unwrap()
