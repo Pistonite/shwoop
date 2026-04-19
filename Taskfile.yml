@@ -1,6 +1,10 @@
 version: '3'
 
 includes:
+  git:
+    taskfile: ./node_modules/mono-dev/task/git.yaml
+    internal: true
+    optional: true
   ecma:
     taskfile: ./node_modules/mono-dev/task/ecma.yaml
     internal: true
@@ -21,24 +25,41 @@ tasks:
 
   run:
     - task: ecma:app-build
-    - cargo run --release -- {{.CLI_ARGS}}
+    - cargo run -- {{.CLI_ARGS}}
     
-
   check:
     - task: ecma:check
     - task: cargo:clippy-all
     - task: cargo:fmt-check
 
+  test:
+    - cargo test
+
   fix:
     - task: ecma:fix
     - task: cargo:fmt-fix
 
-  dev-app:
-    - task: ecma:app-dev
-
   upgrade:
-    - pnpm up mono-dev morphdom
+    - pnpm up mono-dev
     - pnpm dedupe
     - pnpm dedupe --check
+
+  dist-check:
+    - task: git:check-modification
+      vars:
+        CHECK_PATH: dist
+        CHECK_MESSAGE: found diff in 'dist', please run `task build` and commit your changes
+
+  publish:
+    - task: git:check-modification
+      vars:
+        CHECK_MESSAGE: clean work tree is required before publishing
+    - git checkout dist
+    - git pull
+    - task: install
+    - task: check
+    - task: build
+    - task: test
+
 
 

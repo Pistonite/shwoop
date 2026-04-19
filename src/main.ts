@@ -22,16 +22,6 @@ const main = async () => {
         return new FrameMgr(status, initialPathname, tracker);
     })();
 
-    // // add popstate event for handling navigation within the frame
-    // window.addEventListener("popstate", async (e) => {
-    //     let state: string = e.state;
-    //     if (!state || typeof state !== "string") {
-    //         state = initialPathname;
-    //     }
-    //     log("popstate to: "+state);
-    //     await (await frameManagerPromise).switchTo(state);
-    // });
-
     startWebsocketSession(`ws://${location.host}/`, status, async () => {
         if (!status.isHotReloadEnabled()) {
             location.reload();

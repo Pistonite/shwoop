@@ -5,8 +5,8 @@
     "description": "WebSocket client to reload the page",
     "devDependencies": {
         "@types/node": "^25.6.0",
-        "eslint": "^9.39.4",
-        "mono-dev": "link:../mono-dev"
+        "eslint": "^9",
+        "mono-dev": "github:pistonight/mono-dev#new_setup"
     },
     "nocheck": [
         "dist"

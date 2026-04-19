@@ -80,7 +80,7 @@ export default defineConfig(async () => {
         build: {
             // tried inline sourcemap but that doesn't really work for some reason
             // (could be because of the inline plugin?)
-            rollupOptions: {
+            rolldownOptions: {
                 output: {
                     entryFileNames: JS_CHUNK_NAME + "-xxx-[hash].js",
                 },
