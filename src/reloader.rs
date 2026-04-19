@@ -1,52 +1,56 @@
 use std::ops::ControlFlow;
 use std::path::Path;
 use std::sync::{Arc, mpsc};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use cu::pre::*;
 
 use crate::server::SessionMgr;
-use crate::util::ThreadName;
 
 pub fn start(
     sessions: Arc<SessionMgr>,
     build_command: Vec<String>,
-) -> (ReloadEventSender, thread::JoinHandle<()>) {
+) -> (ReloadEventSender, JoinHandle<cu::Result<()>>) {
     let (send, recv) = mpsc::channel();
+
     let handle = thread::spawn(move || {
-        cu::cli::set_thread_name(ThreadName::Reloader);
-        cu::debug!("reloader started");
-        let mut state = State::Idle;
-        let mut should_build = false;
-        loop {
-            let event = match poll_next_event_with_state(
-                &mut state,
-                &mut should_build,
-                &recv,
-                &sessions,
-                &build_command,
-            ) {
-                ControlFlow::Continue(false) => break,
-                ControlFlow::Continue(true) => continue,
-                ControlFlow::Break(event) => event,
-            };
-            match event {
-                ReloadEvent::Reload => {
-                    state = State::ReloadScheduled;
-                }
-                ReloadEvent::BuildAndReload => {
-                    should_build = true;
-                    state = State::ReloadScheduled;
+        let runtime = cu::check!(tokio::runtime::LocalRuntime::new(), "failed to create runtime for reloader")?;
+        runtime.block_on(async move {
+            cu::debug!("reloader started");
+            let mut state = State::Idle;
+            let mut should_build = false;
+            loop {
+                let result = poll_next_event_with_state(
+                    &mut state,
+                    &mut should_build,
+                    &recv,
+                    &sessions,
+                    &build_command,
+                ).await;
+                let event = match result {
+                    ControlFlow::Continue(false) => break,
+                    ControlFlow::Continue(true) => continue,
+                    ControlFlow::Break(event) => event,
+                };
+                match event {
+                    ReloadEvent::Reload => {
+                        state = State::ReloadScheduled;
+                    }
+                    ReloadEvent::BuildAndReload => {
+                        should_build = true;
+                        state = State::ReloadScheduled;
+                    }
                 }
             }
-        }
-        cu::debug!("reloader stopped");
+            cu::debug!("reloader stopped");
+            cu::Ok(())
+        })
     });
     (send, handle)
 }
 
-fn poll_next_event_with_state(
+async fn poll_next_event_with_state(
     state: &mut State,
     should_build: &mut bool,
     recv: &ReloadEventReceiver,
@@ -94,7 +98,7 @@ fn poll_next_event_with_state(
                                 }
                             } else {
                                 // do notify the client
-                                sessions.reload_all();
+                                sessions.reload_all().await;
                                 *state = State::Idle;
                             }
                         }

@@ -9,6 +9,13 @@ export type StatusColor = "" | keyof typeof StatusColor;
 const STORAGE_KEY = BIN_NAME + "--settings";
 const CLASSNAME = BIN_NAME + "--status-bar";
 
+export type PerfName = "page-load" | "stabilize" | "track";
+export const PerfNameMap: Record<PerfName, string> = {
+    ["page-load"]: "page load",
+    ["stabilize"]: "page stabilize",
+    ["track"]: "state traversal",
+};
+
 export class StatusBar {
     private settings: Settings;
     private div: HTMLDivElement;
@@ -20,7 +27,14 @@ export class StatusBar {
     private baseColor: StatusColor = "";
     private toastTimer: ReturnType<typeof setTimeout> | undefined;
 
+    private perfData: { [K in PerfName]: number };
+
     constructor() {
+        this.perfData = {
+            ["page-load"]: -1,
+            ["stabilize"]: -1,
+            ["track"]: -1,
+        };
         this.settings = {
             enableHotReload: true,
             enableStateTracking: true,
@@ -67,6 +81,25 @@ export class StatusBar {
                 this.toast("red", "state tracking: off - states will not be restored on reload");
             }
         });
+        const buttonPerf = document.createElement("button");
+        buttonPerf.title = "Show performance";
+        buttonPerf.textContent = "icon";
+        buttonPerf.addEventListener("click", () => {
+            const messages: string[] = [];
+            for (const key in this.perfData) {
+                const value = this.perfData[key as PerfName];
+                if (value >= 0) {
+                    messages.push(`${PerfNameMap[key as PerfName]}: ${Math.floor(value)}ms`);
+                }
+            }
+
+            if (messages.length) {
+                this.toast("yellow", messages.join(" | "));
+            } else {
+                this.toast("yellow", "no data yet");
+            }
+        });
+
 
         const divButtons = document.createElement("div");
         divButtons.className = CLASSNAME + "-buttons";
@@ -198,6 +231,17 @@ export class StatusBar {
         this.labelContainer.style.transition = "";
         this.label.className = `${BIN_NAME}--status-bar-label ${color}`;
         this.labelContainer.style.width = nextWidth + "px";
+    }
+
+    public updatePerfNumber(name: PerfName, num: number) {
+        this.perfData[name] = num;
+    }
+
+    public startPerfMeasure(name: PerfName): () => void {
+        const start = performance.now();
+        return () => {
+            this.perfData[name] = performance.now() - start;
+        }
     }
 }
 

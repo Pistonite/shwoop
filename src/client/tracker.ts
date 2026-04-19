@@ -22,7 +22,7 @@ type StackItem = {
 const BATCH_TARGET_MS = 50;
 const BATCH_MAX_SIZE = 10000;
 const STABILIZE_DEBOUNCE_MS = 1000; // start with 1000 ms
-const STABILIZE_DEBOUNCE_MS_MIN = 200; // wait for at least 200ms for the document to stablize and any css/dom change to be done
+const STABILIZE_DEBOUNCE_MS_MIN = 0; // wait for at least this ms for the document to stablize and any css/dom change to be done
 const STABILIZE_TIMEOUT_MS = 2000;
 
 /** Tracks state of the document that can be re-applied when reloading */
@@ -43,9 +43,7 @@ export class StateTracker {
         this.controller = new AbortController();
         this.state = new Map();
         this.changedWhileStarting = false;
-        // if (previous?.pathname === pathname) {
         this.lastStabilizationMs = previous?.lastStabilizationMs;
-        // }
     }
 
     public stop() {
@@ -64,6 +62,7 @@ export class StateTracker {
             await sleep(STABILIZE_DEBOUNCE_MS_MIN);
             return false;
         }
+        const pageStabilizationStartTime = performance.now();
         const stabilizationDebounceMs = this.lastStabilizationMs
             ? Math.max(this.lastStabilizationMs * 2, STABILIZE_DEBOUNCE_MS_MIN)
             : STABILIZE_DEBOUNCE_MS;
@@ -74,6 +73,7 @@ export class StateTracker {
             );
             return false;
         }
+        log(`took ${Math.floor(performance.now()-pageStabilizationStartTime)}ms for page stabilization`);
         const mutationWhileAddingElementObserver = new MutationObserver(() => {
             this.changedWhileStarting = true;
             mutationWhileAddingElementObserver.disconnect();
@@ -90,6 +90,7 @@ export class StateTracker {
         }
 
         const startTime = performance.now();
+
         let elemCount = 0;
         this.rootFrame.window()?.addEventListener(
             "scroll",
@@ -201,7 +202,7 @@ export class StateTracker {
         }
 
         const elapsed = Math.floor(performance.now() - startTime);
-        log(`took ${elapsed}ms to start tracking state for ${elemCount} nodes`);
+        log(`took ${elapsed}ms to traverse state for ${elemCount} nodes`);
 
         return true;
     }
@@ -235,10 +236,8 @@ export class StateTracker {
             elemCount++;
         }
         if (elemCount) {
-            // need time to render the update
-            // await sleep(200);
+            log(`applied state for ${elemCount} nodes`);
         }
-        log(`applied state for ${elemCount} nodes`);
         // if (windowScrollTop || windowScrollLeft) {
         //     frame.contentWindow?.scrollTo(windowScrollLeft, windowScrollTop);
         //     log("applied window scroll");

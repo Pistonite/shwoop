@@ -27,7 +27,7 @@ export class FrameMgr {
         // show the new frame
         this.active = frame;
         this.currentPathname = pathname;
-        await frame.show(pathname);
+        await frame.show(this.status, pathname);
         if (this.active !== frame || this.currentPathname !== pathname) {
             // no longer current after the frame got shown
             frame.remove();
@@ -71,7 +71,7 @@ export class FrameMgr {
             this.reloadingScheduled = false;
             const frame = Frame.newIFrame("10");
             const pathname = this.currentPathname;
-            await frame.show(this.currentPathname);
+            await frame.show(this.status, this.currentPathname);
             // did we switch path during this time?
             if (this.currentPathname !== pathname) {
                 return false;
@@ -111,6 +111,9 @@ export class FrameMgr {
             // all ready, bring the frame to top
             frame.setZIndex(`${this.nextZIndex++}`);
             this.active = frame;
+            // clean document needs to be async. otherwise pushing
+            // the frame to top and removing the other nodes at the same time
+            // will cause flicker
             this.cleanDocument();
         }
         return true;

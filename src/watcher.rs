@@ -8,7 +8,6 @@ use watchexec_events::{FileType, Source, Tag, filekind::FileEventKind};
 use watchexec_signals::Signal;
 
 use crate::reloader::{ReloadEvent, ReloadEventSender};
-use crate::util::ThreadName;
 
 pub fn start(
     path: PathBuf,
@@ -40,14 +39,12 @@ pub struct Watcher {
 
 impl Watcher {
     pub async fn start(self) -> cu::Result<()> {
-        cu::cli::set_thread_name(ThreadName::Watchexec);
         let wx = {
             let output_path = self.path.clone();
             let files_in_output_cache = DashMap::<String, bool>::default();
             let has_build_step = self.has_build_step;
             let reload_sender = self.reload_sender;
             Watchexec::new(move |mut action| {
-                cu::cli::set_thread_name(ThreadName::Watchexec);
                 if action.signals().any(|sig| sig == Signal::Interrupt) {
                     action.quit();
                 }
@@ -149,12 +146,10 @@ impl Watcher {
         wx.config.throttle(Duration::from_millis(100));
         cu::co::select! {
             result = wx.main() => {
-                cu::cli::set_thread_name(ThreadName::Watchexec);
                 let result = cu::check!(result, "watchexec join error")?;
                 cu::check!(result, "watchexec critical error")?;
             }
             _ = self.stop_signal => {
-                cu::cli::set_thread_name(ThreadName::Watchexec);
             }
         };
         cu::debug!("watcher stopped");

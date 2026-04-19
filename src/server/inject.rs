@@ -1,26 +1,20 @@
-use std::borrow::Cow;
 use std::pin::Pin;
-use std::sync::Arc;
 
 use actix_web::body::{self, BoxBody, MessageBody};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready};
 use actix_web::http::StatusCode;
-use actix_web::http::header::{CONTENT_TYPE, HeaderMap};
-use actix_web::{HttpRequest, HttpResponse};
-use dashmap::{DashMap, DashSet};
+use actix_web::HttpResponse;
 
 use crate::server::handler;
 
 // --- this bucket of trait soup below is boilerplate for a middleware
 pub struct InjectHotReloadMiddleware {
     raw: bool,
-    path_is_webpage_cache: Arc<DashMap<String, bool>>,
 }
 impl InjectHotReloadMiddleware {
-    pub fn new(raw: bool, cache: Arc<DashMap<String, bool>>) -> Self {
+    pub fn new(raw: bool) -> Self {
         Self {
             raw,
-            path_is_webpage_cache: cache,
         }
     }
 }
@@ -39,7 +33,6 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         std::future::ready(Ok(InjectService {
             raw: self.raw,
-            wrapper_paths: Arc::clone(&self.path_is_webpage_cache),
             service,
         }))
     }
@@ -47,7 +40,6 @@ where
 
 pub struct InjectService<S> {
     raw: bool,
-    wrapper_paths: Arc<DashMap<String, bool>>,
     service: S,
 }
 
@@ -171,7 +163,7 @@ where
                     let (req, _) = res.into_parts();
                     return Ok(ServiceResponse::new(
                         req,
-                        handler::html_bytes_response(body),
+                        handler::html_response(body),
                     ));
                 }
                 cu::error!("{} - {}", status, res.request().uri());
@@ -201,13 +193,12 @@ where
             let body = handler::inject_bootstrap(&body_bytes);
             Ok(ServiceResponse::new(
                 req,
-                handler::html_bytes_response(body),
+                handler::html_response(body),
             ))
         });
     }
 }
 
-// static WRAPPER: &str = include_str!("../../dist/index.html");
 static ERROR_PAGE: &str = include_str!("404.html");
 
 fn make_error_page(status: StatusCode) -> String {
@@ -218,85 +209,4 @@ fn make_error_page(status: StatusCode) -> String {
         .replacen("404", &status.as_u16().to_string(), 2)
         .replacen("Not Found", status.canonical_reason().unwrap_or("Error"), 2)
         .into()
-}
-
-// fn do_inject(content_str: &str) -> String {
-//     let mut output = String::new();
-//     let mut rest_wrapper = WRAPPER;
-//
-//     // // Replace <html> in wrapper with the opening <html ...> tag from content
-//     // // to preserve any attributes (e.g. lang="en")
-//     // if let Some(html_tag) = extract_html_tag(&content_str) {
-//     //     replace_placeholder(&mut output, &mut rest_wrapper, "<html>", html_tag);
-//     // }
-//     //
-//     // // If content has a <link rel="icon">, add it to the wrapper's <head>
-//     // if let Some(link_icon_tag) = extract_link_icon_tag(&content_str) {
-//     //     replace_placeholder(
-//     //         &mut output,
-//     //         &mut rest_wrapper,
-//     //         "<!-- PLACEHOLDER_LINK_ICON -->",
-//     //         link_icon_tag,
-//     //     );
-//     // }
-//
-//     // if !path.is_empty() {
-//     //     replace_placeholder(
-//     //         &mut output,
-//     //         &mut rest_wrapper,
-//     //         "<!-- PLACEHOLDER_PRELOAD -->",
-//     //         &format!(r#"<link rel="preload" href="{path}?x-shwoop-is-raw=1">"#),
-//     //     );
-//     //
-//     // }
-//     //
-//     // replace_placeholder(
-//     //     &mut output,
-//     //     &mut rest_wrapper,
-//     //     "<!-- PLACEHOLDER_SERVER_FRAME -->",
-//     //     &format!(r##"<iframe class="content-frame" allow="accelerometer; autoplay; bluetooth; camera; clipboard-read; clipboard-write; display-capture; encrypted-media; fullscreen; gamepad; geolocation; gyroscope; hid; identity-credentials-get; idle-detection; local-fonts; magnetometer; microphone; midi; payment; picture-in-picture; publickey-credentials-get; screen-wake-lock; serial; storage-access; usb; web-share; xr-spatial-tracking" sandbox="allow-downloads allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation allow-top-navigation-by-user-activation allow-top-navigation-to-custom-protocols" src="{}?x-shwoop-is-raw=1" style="z-index:99" onload="console.log('rendered in '+Math.floor(performance.now())+'ms')"></iframe>"##, path)
-//     // );
-//
-//     output.push_str(rest_wrapper);
-//     output
-// }
-
-/// Advance the `rest` cursor past `placeholder`, emitting everything before it plus
-/// `replacement` into `output`. Logs an error if the placeholder is not found.
-fn replace_placeholder<'a>(
-    output: &mut String,
-    rest: &mut &'a str,
-    placeholder: &str,
-    replacement: &str,
-) {
-    if let Some(pos) = rest.find(placeholder) {
-        output.push_str(&rest[..pos]);
-        output.push_str(replacement);
-        *rest = &rest[pos + placeholder.len()..];
-    } else {
-        cu::error!("unexpected: did not find {placeholder:?} in wrapper html");
-    }
-}
-
-/// Extract the opening tag of an element, e.g. `<html lang="en">`.
-fn extract_html_tag(html: &str) -> Option<&str> {
-    let start = html.find("<html")?;
-    let end = html[start..].find('>')? + 1;
-    Some(&html[start..start + end])
-}
-
-/// Find the first `<link>` tag with `rel="icon"` or `rel='icon'`.
-fn extract_link_icon_tag<'a>(html: &'a str) -> Option<&'a str> {
-    let mut rest = html;
-    let mut base = 0;
-    loop {
-        let link_pos = rest.find("<link")?;
-        let tag_end = rest[link_pos..].find('>')? + 1;
-        let tag = &rest[link_pos..link_pos + tag_end];
-        if tag.contains("rel=\"icon\"") || tag.contains("rel='icon'") {
-            return Some(&html[base + link_pos..base + link_pos + tag_end]);
-        }
-        base += link_pos + tag_end;
-        rest = &rest[link_pos + tag_end..];
-    }
 }

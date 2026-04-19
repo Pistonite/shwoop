@@ -1,5 +1,5 @@
 import type { StatusBar } from "./status_bar.ts";
-import { error, sleep } from "./util.ts";
+import { delayed, error, sleep } from "./util.ts";
 
 const BEFORE_RECONNECT_S = 5;
 const BACKOFF_BASE_MS = 3000;
@@ -15,10 +15,13 @@ export const startWebsocketSession = (
     let totalWaitedMs = 0;
     let reloaded = false;
     const connect = (isFirst: boolean, isRetry: boolean) => {
-        status.update("", "connecting...");
+        const cancel = delayed(() => {
+            status.update("", "connecting...");
+        });
         const ws = new WebSocket(url);
 
         ws.addEventListener("open", () => {
+            cancel();
             if (!isFirst) {
                 status.update("", "");
                 reloaded = true;
@@ -43,6 +46,7 @@ export const startWebsocketSession = (
         });
 
         ws.addEventListener("close", async () => {
+            cancel();
             if (reloaded) {
                 return;
             }

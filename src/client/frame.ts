@@ -1,3 +1,4 @@
+import type { StatusBar } from "./status_bar.ts";
 import { error, type Class } from "./util.ts";
 
 export const CLASSNAME = BIN_NAME + "--content-frame";
@@ -9,20 +10,7 @@ export class Frame {
     public static newIFrame(zIndex: string): Frame {
         const frame = document.createElement("iframe");
         frame.className = CLASSNAME;
-        // frame.style.position = "fixed";
-        // frame.style.top = "0";
-        // frame.style.left = "0";
-        // frame.style.right = "0";
-        // frame.style.bottom = "0";
-        // frame.style.border = "none";
-        // frame.style.width = "100vw";
-        // frame.style.height = "100vh";
         frame.style.zIndex = zIndex;
-        // injectStyle(BIN_NAME+"--iframe", `.${CLASSNAME} { position:fixed;top:0;left:0;right:0 }`)
-        // iframe.content-frame {
-        //     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-        //     border: none; width: 100vw; height: 100vh;
-        // }
 
         return new Frame(frame);
     }
@@ -42,17 +30,19 @@ export class Frame {
     }
 
     /** Add the frame to the document (if not already) and display the URL */
-    public async show(url: string): Promise<void> {
+    public async show(status: StatusBar, url: string): Promise<void> {
         if (!this.inner) {
             location.href = url;
             return;
         }
+        const stop = status.startPerfMeasure("page-load");
         const frameLoadedPromise = new Promise<void>((resolve) => {
             (this.inner as HTMLIFrameElement).onload = () => resolve();
         });
         this.inner.src = url;
         document.body.append(this.inner);
         await frameLoadedPromise;
+        stop();
     }
 
     public remove() {

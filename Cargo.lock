@@ -222,24 +222,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "actix-web-actors"
-version = "4.3.1+deprecated"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f98c5300b38fd004fe7d2a964f9a90813fdbe8a81fed500587e78b1b71c6f980"
-dependencies = [
- "actix",
- "actix-codec",
- "actix-http",
- "actix-web",
- "bytes",
- "bytestring",
- "futures-core",
- "pin-project-lite",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
 name = "actix-web-codegen"
 version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -249,6 +231,22 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "actix-ws"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "decf53c3cdd63dd6f289980b430238f9a2f6d19f8bce8e418272e08d3da43f0f"
+dependencies = [
+ "actix-codec",
+ "actix-http",
+ "actix-web",
+ "bytestring",
+ "futures-core",
+ "futures-sink",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -1944,17 +1942,18 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "shwoop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "actix",
  "actix-files",
  "actix-web",
- "actix-web-actors",
+ "actix-ws",
  "dashmap",
  "log",
  "lol_html",
  "oneshot",
  "pistonite-cu",
+ "tokio",
  "watchexec",
  "watchexec-events",
  "watchexec-signals",
@@ -2165,6 +2164,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

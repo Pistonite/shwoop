@@ -20,9 +20,5 @@ export const error = (...x: unknown[]) => {
     console.log("[" + BIN_NAME + "]", ...x);
 };
 
-export const HOST = import.meta.env.DEV
-    ? `${globalThis.location.hostname}:8241`
-    : globalThis.location.host;
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Class<T> = new (...args: any[]) => T;

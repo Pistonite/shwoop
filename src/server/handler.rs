@@ -1,12 +1,11 @@
+use std::net::{IpAddr, UdpSocket};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use actix_web::dev::ServiceResponse;
 use actix_web::guard::{self, Guard};
-use actix_web::http::header::{CACHE_CONTROL, CONTENT_TYPE, HeaderName, HeaderValue, USER_AGENT};
+use actix_web::http::header::{CACHE_CONTROL, CONTENT_TYPE, HeaderValue, USER_AGENT};
 use actix_web::web::{Data as WebData, Payload};
 use actix_web::{HttpRequest, HttpResponse};
-use dashmap::DashMap;
 use lol_html::{HtmlRewriter, Settings, element, html_content::ContentType};
 
 use crate::server::{Session, SessionMgr};
@@ -20,8 +19,12 @@ pub struct ServerState {
     pub sessions: Arc<SessionMgr>,
     /// Input path (normalized)
     pub path: PathBuf,
-    /// Cache for checking if a path is a webpage and should enable hot-reload
-    pub path_is_webpage_cache: Arc<DashMap<String, bool>>,
+}
+
+pub fn local_ip() -> cu::Result<IpAddr> {
+    let socket = UdpSocket::bind("0.0.0.0:0")?;
+    socket.connect("8.8.8.8:80")?;
+    Ok(socket.local_addr()?.ip())
 }
 
 /// Check the request is a websocket upgrade request
@@ -110,15 +113,8 @@ pub async fn single_file(state: WebData<ServerState>) -> Result<HttpResponse, ac
             return Ok(HttpResponse::InternalServerError().finish());
         }
     };
-    Ok(html_bytes_response(body))
+    Ok(html_response(body))
 }
-
-// /// Check if the request is requesting a raw file
-// pub fn is_raw(req: &HttpRequest) -> bool {
-//     req.query_string()
-//         .split('&')
-//         .any(|p| p == "x-shwoop-is-raw=1")
-// }
 
 /// Check if request looks like it's coming from a browser
 pub fn is_browser(req: &HttpRequest) -> bool {
@@ -157,27 +153,12 @@ pub fn is_html<B>(res: &HttpResponse<B>) -> bool {
         .is_some_and(|ct| ct.starts_with("text/html"))
 }
 
-/// Check if the request is a success markdown file
-pub fn is_markdown<B>(res: &HttpResponse<B>) -> bool {
-    res.headers()
-        .get(CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|ct| ct.starts_with("text/markdown"))
-}
-
 pub fn set_cache<B>(res: &mut HttpResponse<B>, cache: bool) {
     res.headers_mut()
         .insert(CACHE_CONTROL, cache_control_value(cache));
 }
 
-pub fn html_response(body: String, cache: bool) -> HttpResponse {
-    HttpResponse::Ok()
-        .append_header((CONTENT_TYPE, "text/html"))
-        .append_header((CACHE_CONTROL, cache_control_value(cache)))
-        .body(body)
-}
-
-pub fn html_bytes_response(body: Vec<u8>) -> HttpResponse {
+pub fn html_response(body: Vec<u8>) -> HttpResponse {
     HttpResponse::Ok()
         .append_header((CONTENT_TYPE, "text/html"))
         .append_header((CACHE_CONTROL, "no-store"))
@@ -186,7 +167,7 @@ pub fn html_bytes_response(body: Vec<u8>) -> HttpResponse {
 
 pub fn cache_control_value(cache: bool) -> HeaderValue {
     HeaderValue::from_static(if cache {
-        "max-age=300,stale-while-revalidate=3600"
+        "max-age=0,stale-while-revalidate=3600"
     } else {
         "no-store"
     })

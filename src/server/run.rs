@@ -6,12 +6,10 @@ use actix_files::Files as FilesService;
 use actix_web::middleware::Logger;
 use actix_web::web::{self, Data as WebData};
 use actix_web::{App, HttpServer};
-use dashmap::DashMap;
 
 use crate::server::SessionMgr;
 use crate::server::handler::{self, ServerState};
 use crate::server::inject::InjectHotReloadMiddleware;
-use crate::util::ThreadName;
 
 pub fn start(
     port: u16,
@@ -22,7 +20,6 @@ pub fn start(
 ) -> JoinHandle<cu::Result<()>> {
     cu::debug!("starting http server on port {port}");
     thread::spawn(move || {
-        cu::cli::set_thread_name(ThreadName::Server);
         actix_web::rt::System::new()
             .block_on(async move { run_server(port, raw, local_only, sessions, serve_path).await })
     })
@@ -47,14 +44,11 @@ async fn run_server(
     let state = WebData::new(ServerState {
         sessions,
         path: serve_path,
-        path_is_webpage_cache: Arc::new(DashMap::default()),
     });
 
     // skip formatting so it's not too vertical
     #[rustfmt::skip]
     HttpServer::new(move || {
-        cu::cli::set_thread_name(ThreadName::Server);
-        // let serve_path = state.serve_path.clone();
         let state = state.clone();
 
         App::new().app_data(state.clone())
@@ -72,7 +66,7 @@ async fn run_server(
                 if is_file {
                     cfg.route("/",
                         web::get().to(handler::single_file)
-                            .wrap(InjectHotReloadMiddleware::new(raw, state.path_is_webpage_cache.clone())),
+                            .wrap(InjectHotReloadMiddleware::new(raw)),
                     );
                 } else {
                     cfg.service(
@@ -84,7 +78,7 @@ async fn run_server(
                                     .redirect_to_slash_directory()
                                     .prefer_utf8(true),
                             )
-                            .wrap(InjectHotReloadMiddleware::new(raw, state.path_is_webpage_cache.clone()))
+                            .wrap(InjectHotReloadMiddleware::new(raw))
                     );
                 }
             })

@@ -36,7 +36,7 @@ fn main(args: args::Args) -> cu::Result<()> {
 
     let port = args.port;
     let host_address = if args.host {
-        match util::local_ip() {
+        match server::local_ip() {
             Ok(ip) => format!("http://{ip}:{port}"),
             Err(e) => {
                 cu::warn!("failed to get local ip address: {e:?}");
@@ -106,5 +106,4 @@ fn main(args: args::Args) -> cu::Result<()> {
 mod args;
 mod reloader;
 mod server;
-mod util;
 mod watcher;

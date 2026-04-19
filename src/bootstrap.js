@@ -4,11 +4,25 @@
         if (window.self === window.top) {
             return null;
         }
-        const topWindow = window.parent;
-        if (!topWindow || !topWindow["__shwoop_top_page"]) {
+        const parent = window.parent;
+        if (!parent || !parent["__shwoop_top_page"]) {
             return null;
         }
-        return topWindow;
+        return parent;
+    }
+    function navigateParent(url, replace) {
+        if (!window.parent) {
+            return false;
+        }
+        if (window.parent.location.href === url) {
+            return false;
+        }
+        if (replace) {
+            window.parent.location.replace(url);
+        } else {
+            window.parent.location.href = url;
+        }
+        return true;
     }
     try {
         const topWindow = getTopWindowIfInShwoopIFrame();
@@ -19,37 +33,10 @@
             const topLocation = topWindow.location;
             const topPath = topLocation.pathname + topLocation.search + topLocation.hash;
             if (topPath !== correctPath) {
-                topWindow.history.pushState(
-                    {
-                        pathname: location.pathname,
-                        search: location.search,
-                        hash: location.hash,
-                    },
-                    "",
-                    correctPath,
-                );
+                navigateParent(correctPath, replace);
+                return;
             }
-            // Patch all navigation to route through parent
-            const parentWindow = window.parent;
-            function navigateParent(url, replace) {
-                try {
-                    const parsed = new URL(url, location.href);
-                    const path = parsed.pathname + parsed.search + parsed.hash;
-                    if (parsed.origin === location.origin) {
-                        if (replace) {
-                            parentWindow.history.replaceState({}, "", path);
-                        } else {
-                            parentWindow.history.pushState({}, "", path);
-                        }
-                        return;
-                    }
-                } catch {}
-                if (replace) {
-                    parentWindow.location.replace(url);
-                } else {
-                    parentWindow.location.href = url;
-                }
-            }
+            // patch all navigation to route through parent
             // anchor clicks
             document.addEventListener(
                 "click",
@@ -66,34 +53,38 @@
             // history API (SPA routing)
             const _pushState = history.pushState.bind(history);
             const _replaceState = history.replaceState.bind(history);
-            history.pushState = function (state, title, url) {
-                if (url != null) {
-                    navigateParent(String(url));
-                    return;
+            history.pushState = function (state, unused, url) {
+                if (url) {
+                    if (navigateParent(String(url))) {
+                        return;
+                    }
                 }
-                _pushState(state, title, url);
+                _pushState(state, unused, url);
             };
-            history.replaceState = function (state, title, url) {
-                if (url != null) {
-                    navigateParent(String(url), true);
-                    return;
+            history.replaceState = function (state, unused, url) {
+                if (url) {
+                    if (navigateParent(String(url), true)) {
+                        return;
+                    }
                 }
-                _replaceState(state, title, url);
+                _replaceState(state, unused, url);
             };
             // location.assign / replace / href setter
+            const _assign = location.assign.bind(location);
+            const _replace = location.replace.bind(location);
             location.assign = function (url) {
-                navigateParent(url);
+                if (!navigateParent(url)) _assign(url);
             };
             location.replace = function (url) {
-                navigateParent(url, true);
+                if (!navigateParent(url, true)) _replace(url);
             };
             try {
                 const proto = Object.getPrototypeOf(location);
                 const desc = Object.getOwnPropertyDescriptor(proto, "href");
-                Object.defineProperty(proto, "href", {
-                    get: desc.get,
+                Object.defineProperty(location, "href", {
+                    get: desc.get.bind(location),
                     set(url) {
-                        navigateParent(url);
+                        if (!navigateParent(url)) desc.set.call(location, url);
                     },
                     configurable: true,
                 });
