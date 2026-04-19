@@ -1,4 +1,5 @@
 import { injectStyle } from "./style";
+import { displayMs } from "./util";
 
 export const StatusColor = {
     green: "#8f8",
@@ -9,12 +10,13 @@ export type StatusColor = "" | keyof typeof StatusColor;
 const STORAGE_KEY = BIN_NAME + "--settings";
 const CLASSNAME = BIN_NAME + "--status-bar";
 
-export type PerfName = "page-load" | "stabilize" | "track";
-export const PerfNameMap: Record<PerfName, string> = {
-    ["page-load"]: "page load",
-    ["stabilize"]: "page stabilize",
-    ["track"]: "state traversal",
-};
+export const PerfNameMap = [
+    ["build", "build"],
+    ["page-load", "page load"],
+    ["stabilize", "page stabilize"],
+    ["track", "state traversal"]
+] as const;
+export type PerfName = (typeof PerfNameMap)[number][0];
 
 export class StatusBar {
     private settings: Settings;
@@ -31,6 +33,7 @@ export class StatusBar {
 
     constructor() {
         this.perfData = {
+            ["build"]: -1,
             ["page-load"]: -1,
             ["stabilize"]: -1,
             ["track"]: -1,
@@ -86,10 +89,10 @@ export class StatusBar {
         buttonPerf.textContent = "🕙";
         buttonPerf.addEventListener("click", () => {
             const messages: string[] = [];
-            for (const key in this.perfData) {
-                const value = this.perfData[key as PerfName];
+            for (const [key, name] of PerfNameMap) {
+                const value = this.perfData[key];
                 if (value >= 0) {
-                    messages.push(`${PerfNameMap[key as PerfName]}: ${Math.floor(value)}ms`);
+                    messages.push(`${name}: ${displayMs(value)}`);
                 }
             }
 
@@ -208,10 +211,12 @@ export class StatusBar {
         clearTimeout(this.toastTimer);
         this.toastTimer = undefined;
         this.updateLabel(color, message);
+        // ~80ms per character, clamped to [2s, 10s]
+        const duration = Math.min(10000, Math.max(3000, message.length * 80));
         this.toastTimer = setTimeout(() => {
             this.toastTimer = undefined;
             this.updateLabel(this.baseColor, this.baseMessage);
-        }, 3000);
+        }, duration);
     }
 
     /** Set color and message of the status bar, but don't override current toast*/

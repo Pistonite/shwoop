@@ -26,7 +26,7 @@ To build from Rust source + published JS assets (requires Rust)
 cargo install shwoop
 ```
 
-If you want to build from only sources in this repo. Both Rust and PNPM is required.
+Building from only sources in this repo requires Rust, NodeJS and PNPM
 ```
 pnpm install
 pnpm exec monolint --config

@@ -22,7 +22,7 @@ type StackItem = {
 const BATCH_TARGET_MS = 50;
 const BATCH_MAX_SIZE = 10000;
 const STABILIZE_DEBOUNCE_MS = 1000; // start with 1000 ms
-const STABILIZE_DEBOUNCE_MS_MIN = 0; // wait for at least this ms for the document to stablize and any css/dom change to be done
+const STABILIZE_DEBOUNCE_MS_MIN = 20; // wait for at least this ms for the document to stablize and any css/dom change to be done
 const STABILIZE_TIMEOUT_MS = 2000;
 
 /** Tracks state of the document that can be re-applied when reloading */

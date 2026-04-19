@@ -39,7 +39,7 @@ pub struct Watcher {
 
 impl Watcher {
     pub async fn start(self) -> cu::Result<()> {
-        cu::info!("watcher started");
+        cu::debug!("starting watcher");
         let wx = {
             let output_path = self.path.clone();
             let files_in_output_cache = DashMap::<String, bool>::default();
@@ -145,6 +145,7 @@ impl Watcher {
         wx.config
             .pathset(std::iter::once(self.path).chain(self.source_paths));
         wx.config.throttle(Duration::from_millis(100));
+        cu::info!("started watcher");
         cu::co::select! {
             result = wx.main() => {
                 let result = cu::check!(result, "watchexec join error")?;
@@ -153,7 +154,7 @@ impl Watcher {
             _ = self.stop_signal => {
             }
         };
-        cu::info!("watcher stopped");
+        cu::info!("stopped watcher");
 
         Ok(())
     }

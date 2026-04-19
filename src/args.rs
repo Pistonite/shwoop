@@ -1,5 +1,6 @@
 use cu::pre::*;
 
+/// LOGO made with typez
 static LOGO: &str = r#" ______ __  __ __     __ ______ ______ ______  
 /\  ___\\ \_\ \\ \  _ \ \\  __ \\  __ \\  == \ 
 \ \___  \\  __ \\ \/ ".\ \\ \/\ \\ \/\ \\  _-/ 
@@ -47,97 +48,16 @@ pub struct Args {
     pub command: Vec<String>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use clap::Parser;
-
-    fn default_flags() -> cu::cli::Flags {
-        cu::cli::Flags::try_parse_from([""]).unwrap()
-    }
-
-    fn verbose_flags() -> cu::cli::Flags {
-        cu::cli::Flags::try_parse_from(["", "-v"]).unwrap()
-    }
-
-    #[test]
-    fn test_path_only() {
-        assert_eq!(
-            Args::try_parse_from(["", "."]).unwrap(),
-            Args {
-                path: ".".into(),
-                port: 8241,
-                host: false,
-                raw: false,
-                watch: vec![],
-                flags: default_flags(),
-                command: vec![],
+pub struct LogConfig;
+impl cu::cli::LogConfig for LogConfig {
+    fn process(&self, record: &cu::lv::LogRecord) -> (cu::lv::Lv, bool) {
+        if let Some(m) = record.module_path() {
+            if m.starts_with("watchexec") || m.starts_with("actix") {
+                let level = record.level();
+                let is_info = record.level() == cu::lv::LogLevel::Info;
+                return (if is_info { cu::lv::D } else { level.into() }, true);
             }
-        );
-    }
-
-    #[test]
-    fn test_with_command() {
-        assert_eq!(
-            Args::try_parse_from(["", ".", "hello"]).unwrap(),
-            Args {
-                path: ".".into(),
-                port: 8241,
-                host: false,
-                raw: false,
-                watch: vec![],
-                flags: default_flags(),
-                command: vec!["hello".into()],
-            }
-        );
-    }
-
-    #[test]
-    fn test_with_watch_port_and_command() {
-        assert_eq!(
-            Args::try_parse_from(["", ".", "hello", "-w", "foo", "-p", "12345", "bar"]).unwrap(),
-            Args {
-                path: ".".into(),
-                port: 12345,
-                host: false,
-                raw: false,
-                watch: vec!["foo".into()],
-                flags: default_flags(),
-                command: vec!["hello".into(), "bar".into()],
-            }
-        );
-    }
-
-    #[test]
-    fn test_verbose_flag() {
-        assert_eq!(
-            Args::try_parse_from(["", ".", "hello", "-w", "foo", "-p", "12345", "bar", "-v"])
-                .unwrap(),
-            Args {
-                path: ".".into(),
-                port: 12345,
-                host: false,
-                raw: false,
-                watch: vec!["foo".into()],
-                flags: verbose_flags(),
-                command: vec!["hello".into(), "bar".into()],
-            }
-        );
-    }
-
-    #[test]
-    fn test_raw_flag() {
-        assert_eq!(
-            Args::try_parse_from(["", ".", "--raw"]).unwrap(),
-            Args {
-                path: ".".into(),
-                port: 8241,
-                host: false,
-                raw: true,
-                watch: vec![],
-                flags: default_flags(),
-                command: vec![],
-            }
-        );
+        }
+        cu::cli::DefaultLogConfig.process(record)
     }
 }

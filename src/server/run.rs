@@ -73,7 +73,7 @@ async fn run_server(
                         web::scope("")
                             .service(
                                 FilesService::new("/", &state.path)
-                                    .show_files_listing()
+                                    // .show_files_listing()
                                     .index_file("index.html")
                                     .redirect_to_slash_directory()
                                     .prefer_utf8(true),

@@ -20,8 +20,9 @@ include = [
 
 [dependencies.cu]
 package = "pistonite-cu"
-version = "0.8.0"
+version = "0.8.1"
 features = [ "cli", "derive", "coroutine", "process" ]
+path = "../cu/packages/copper"
 
 [dependencies]
 actix = "0.13.5"

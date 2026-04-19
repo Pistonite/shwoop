@@ -1,23 +1,28 @@
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use cu::pre::*;
 
 use crate::server::SessionMgr;
 
-#[cu::cli]
+#[cu::cli(log_config = |_| args::LogConfig)]
 fn main(args: args::Args) -> cu::Result<()> {
     cu::debug!("args: {args:#?}");
 
     let path = Path::new(&args.path).normalize()?;
     if !args.command.is_empty() {
-        cu::info!("running an initial build...");
-        cu::check!(
-            reloader::run_build(&args.command),
-            "failed to run initial build"
+        let runtime = cu::check!(
+            tokio::runtime::LocalRuntime::new(),
+            "failed to create runtime for initial build"
         )?;
+        let command = args.command.clone();
+        let result = runtime.block_on(async move {
+            reloader::run_build(&command, true).await
+        });
+        if let Err(e) = result {
+            cu::error!("initial build failed: {e:?}");
+            cu::info!("trying to start server anyway...");
+        }
     }
     match path.metadata() {
         Ok(m) if m.is_file() => {

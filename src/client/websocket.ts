@@ -9,11 +9,13 @@ const BACKOFF_GIVE_UP_MS = 10 * 60 * 1000; // 10 minutes
 export const startWebsocketSession = (
     url: string,
     status: StatusBar,
-    reload: () => void | Promise<void>,
+    reload: (startTime: number) => void | Promise<void>,
 ) => {
     let nextBackoffMs = BACKOFF_BASE_MS;
     let totalWaitedMs = 0;
     let reloaded = false;
+    let buildSucceess = true;
+    let buildStartedTime = 0;
     const connect = (isFirst: boolean, isRetry: boolean) => {
         const cancel = delayed(() => {
             status.update("", "connecting...");
@@ -38,11 +40,40 @@ export const startWebsocketSession = (
             if (reloaded) {
                 return;
             }
-            if (e.data === "reload") {
-                void reload();
+            if (typeof e.data !== "string") {
+                error("unknown message", e.data);
                 return;
             }
-            error(BIN_NAME, "unknown message", e.data);
+            switch (e.data) {
+                case "reload": {
+                    if (buildSucceess) {
+                        const start = buildStartedTime;
+                        buildStartedTime = 0;
+                        void reload(start || performance.now());
+                    }
+                    return;
+                }
+                case "build-started": {
+                    status.update("yellow", "building");
+                    buildStartedTime = performance.now();
+                    return;
+                }
+                case "build-failed": {
+                    buildSucceess = false;
+                    buildStartedTime = 0;
+                    status.update("red", "build failed, please check server output");
+                    status.updatePerfNumber("build", -1);
+                    return;
+                }
+                case "build-succeeded": {
+                    buildSucceess = true;
+                    status.updatePerfNumber("build", performance.now()-buildStartedTime);
+                    return;
+                }
+                default: {
+                    error("unknown message", e.data);
+                }
+            }
         });
 
         ws.addEventListener("close", async () => {

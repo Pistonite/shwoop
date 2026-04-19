@@ -3,6 +3,7 @@ import { StateTracker } from "./client/tracker.ts";
 import { startWebsocketSession } from "./client/websocket.ts";
 import { Frame } from "./client/frame.ts";
 import { FrameMgr } from "./client/frame_mgr.ts";
+import { displayMs } from "./client/util.ts";
 
 const main = async () => {
     const initialPathname = location.pathname + location.search + location.hash;
@@ -22,19 +23,18 @@ const main = async () => {
         return new FrameMgr(status, initialPathname, tracker);
     })();
 
-    startWebsocketSession(`ws://${location.host}/`, status, async () => {
+    startWebsocketSession(`ws://${location.host}/`, status, async (startTime) => {
         if (!status.isHotReloadEnabled()) {
             location.reload();
             return;
         }
-        const startTime = performance.now();
         const ok = await (await frameManagerPromise).reload();
         if (!ok) {
             return;
         }
         const elapsed = Math.floor(performance.now() - startTime);
         status.updateBaseOnly("green", "connected");
-        status.toast("green", `reloaded in ${elapsed}ms`);
+        status.toast("green", `reloaded in ${displayMs(elapsed)}`);
     });
 
     status.updatePerfNumber("page-load", performance.now());

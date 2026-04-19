@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use cu::pre::*;
 
-use crate::server::SessionMgr;
+use crate::server::{Msg, SessionMgr};
 
 pub fn start(
     sessions: Arc<SessionMgr>,
@@ -20,13 +20,15 @@ pub fn start(
             "failed to create runtime for reloader"
         )?;
         runtime.block_on(async move {
-            cu::info!("reloader started");
+            cu::debug!("started reloader");
             let mut state = State::Idle;
             let mut should_build = false;
+            let mut was_build_failed = false;
             loop {
                 let result = poll_next_event_with_state(
                     &mut state,
                     &mut should_build,
+                    &mut was_build_failed,
                     &recv,
                     &sessions,
                     &build_command,
@@ -47,7 +49,7 @@ pub fn start(
                     }
                 }
             }
-            cu::info!("reloader stopped");
+            cu::debug!("stopped reloader");
             cu::Ok(())
         })
     });
@@ -57,6 +59,7 @@ pub fn start(
 async fn poll_next_event_with_state(
     state: &mut State,
     should_build: &mut bool,
+    was_build_failed: &mut bool,
     recv: &ReloadEventReceiver,
     sessions: &SessionMgr,
     build_command: &[String],
@@ -90,19 +93,27 @@ async fn poll_next_event_with_state(
                         }
                         State::ReloadScheduleReached => {
                             if *should_build {
-                                cu::info!("running build command");
                                 *should_build = false;
-                                if let Err(e) = run_build(build_command) {
+                                sessions.send_to_all(Msg::BuildStarted).await;
+                                if let Err(e) = run_build(build_command, *was_build_failed).await {
+                                    let is_first_failure = !*was_build_failed;
+                                    *was_build_failed = true;
                                     // don't reload if build failed
                                     cu::error!("{e:?}");
+                                    if is_first_failure {
+                                        cu::hint!("the output from the build command will be printed for debugging on the next run");
+                                    }
+                                    sessions.send_to_all(Msg::BuildFailed).await;
                                     *state = State::Idle;
                                 } else {
                                     // build success, about to reload
+                                    *was_build_failed = false;
+                                    sessions.send_to_all(Msg::BuildSucceeded).await;
                                     *state = State::ReloadScheduled;
                                 }
                             } else {
                                 // do notify the client
-                                sessions.reload_all().await;
+                                sessions.send_to_all(Msg::Reload).await;
                                 *state = State::Idle;
                             }
                         }
@@ -117,17 +128,36 @@ async fn poll_next_event_with_state(
     }
 }
 
-pub fn run_build(build_command: &[String]) -> cu::Result<()> {
+pub async fn run_build(build_command: &[String], print: bool) -> cu::Result<()> {
     let Some(build_command_bin) = build_command.iter().next() else {
         return Ok(());
+    };
+    let spinner = cu::pio::spinner("building");
+    let spinner = match (cu::lv::D.enabled(), print) {
+        (true, _) => {
+            // always print the message
+            spinner.debug()
+        },
+        (false, true) => {
+            spinner.print()
+        }
+        (false, false) => {
+            spinner
+        }
     };
     let command = Path::new(build_command_bin)
         .command()
         .args(build_command.iter().skip(1))
-        .stdoe(cu::pio::spinner("building").debug())
+        .stdoe(spinner)
         .stdin_null();
-    let (child, progress, _) = cu::check!(command.spawn(), "failed to spawn build command")?;
-    cu::check!(child.wait_nz(), "build command failed")?;
+    let (child, progress, _) = cu::check!(command.co_spawn().await, "failed to spawn build command")?;
+    if let Err(e) = child.co_wait_nz().await {
+        if cu::lv::D.enabled() {
+            cu::rethrow!(e, "build command failed");
+        } else {
+            cu::bail!("build command failed: {e}");
+        }
+    }
     progress.done();
     Ok(())
 }
