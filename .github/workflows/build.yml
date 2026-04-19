@@ -1,0 +1,49 @@
+name: build
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  check:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: Pistonight/mono-dev/actions/setup@new_setup
+        with:
+          mono-dev: false
+          ecma-pnpm: true
+          rust: stable
+      - run: pnpm install
+      - run: task check
+      - run: task test
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu-latest
+            target: x64
+          - image: ubuntu-24.04-arm
+            target: arm64
+          - image: macos-latest
+            target: arm64
+          - image: windows-latest
+            target: x64
+    runs-on: ${{ matrix.image }}
+    steps:
+      - uses: Pistonight/mono-dev/actions/setup@new_setup
+        with:
+          mono-dev: false
+          ecma-pnpm: true
+          rust: stable
+          rust-native: ${{ matrix.target }}
+      - uses: Pistonight/mono-dev/actions/rust-xplat@main
+        with:
+          arch: ${{ matrix.target }}
+          binary: shwoop
+          build-task: exec -- build
+          
+

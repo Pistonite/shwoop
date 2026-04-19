@@ -21,7 +21,7 @@ tasks:
 
   build:
     - task: ecma:app-build
-    - cargo build
+    - cargo build {{.CLI_ARGS}}
 
   run:
     - task: ecma:app-build
@@ -55,8 +55,6 @@ tasks:
       - task: git:check-modification
         vars:
           CHECK_MESSAGE: clean work tree is required before publishing
-      - git checkout dist
-      - git pull
       - task: install
       - task: check
       - task: build
