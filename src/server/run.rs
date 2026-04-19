@@ -66,7 +66,7 @@ async fn run_server(
                 if is_file {
                     cfg.route("/",
                         web::get().to(handler::single_file)
-                            .wrap(InjectHotReloadMiddleware::new(raw)),
+                            .wrap(InjectHotReloadMiddleware { raw, path: state.path.clone() }),
                     );
                 } else {
                     cfg.service(
@@ -78,7 +78,7 @@ async fn run_server(
                                     .redirect_to_slash_directory()
                                     .prefer_utf8(true),
                             )
-                            .wrap(InjectHotReloadMiddleware::new(raw))
+                            .wrap(InjectHotReloadMiddleware{raw, path: state.path.clone()})
                     );
                 }
             })

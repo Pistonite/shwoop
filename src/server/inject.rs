@@ -1,20 +1,18 @@
+use std::path::PathBuf;
 use std::pin::Pin;
 
 use actix_web::HttpResponse;
 use actix_web::body::{self, BoxBody, MessageBody};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready};
 use actix_web::http::StatusCode;
+use cu::str::PathExtension;
 
 use crate::server::handler;
 
 // --- this bucket of trait soup below is boilerplate for a middleware
 pub struct InjectHotReloadMiddleware {
-    raw: bool,
-}
-impl InjectHotReloadMiddleware {
-    pub fn new(raw: bool) -> Self {
-        Self { raw }
-    }
+    pub raw: bool,
+    pub path: PathBuf,
 }
 impl<S, B> Transform<S, ServiceRequest> for InjectHotReloadMiddleware
 where
@@ -31,6 +29,7 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         std::future::ready(Ok(InjectService {
             raw: self.raw,
+            path: self.path.clone(),
             service,
         }))
     }
@@ -38,6 +37,7 @@ where
 
 pub struct InjectService<S> {
     raw: bool,
+    path: PathBuf,
     service: S,
 }
 
@@ -64,22 +64,12 @@ where
                     Ok(res.map_into_boxed_body())
                 })
             }};
-            (|$res:ident| $code:stmt) => {{
-                let fut = self.service.call(sreq);
-                return Box::pin(async move {
-                    let $res = fut.await?;
-                    $code
-                });
-            }};
             (|mut $res:ident| $code:stmt) => {{
                 let fut = self.service.call(sreq);
                 return Box::pin(async move {
                     let mut $res = fut.await?;
                     $code
                 });
-            }};
-            ($code:stmt) => {{
-                return Box::pin(async move { $code });
             }};
         }
 
@@ -88,60 +78,8 @@ where
             handle!(passthrough);
         }
 
-        // let is_raw = handler::is_raw(req);
-        // if is_raw {
-        //     handle!(|mut res| {
-        //         let status = res.status();
-        //         if !status.is_client_error() && !status.is_server_error() {
-        //             // if not error (success, redirection...), return the inner response
-        //             handler::set_cache(res.response_mut(), false);
-        //             cu::info!("(raw) {} - {}", status, res.request().uri());
-        //             return Ok(res.map_into_boxed_body())
-        //         }
-        //         // did not find the raw resource
-        //         let req = res.request();
-        //         let pathname = req.path();
-        //         if handler::probably_webpage(pathname) {
-        //             // if probably requesting HTML page, return error page
-        //             let body = make_error_page(status);
-        //             cu::error!("(raw,webpage) {} - {}", status, res.request().uri());
-        //             let (req, _) = res.into_parts();
-        //             return Ok(ServiceResponse::new(req, handler::html_response(body, false)));
-        //         }
-        //
-        //         handler::set_cache(res.response_mut(), false);
-        //         cu::error!("(raw) {} - {}", status, res.request().uri());
-        //         Ok(res.map_into_boxed_body())
-        //     });
-        // }
-
-        // let pathname = req.path();
-
-        // // if we previously requested the page then we know if it is a webpage
-        // // (this assumes paths don't suddenly change between assets and webpage, which is
-        // // reasonable)
-        // match self.wrapper_paths.get(pathname).map(|x| *x) {
-        //     Some(true) => {
-        //         let body = do_inject("".into(), pathname);
-        //         let (req, _) = sreq.into_parts();
-        //         cu::info!("(wrapper,from-cache) {}", req.uri());
-        //         // bypass inner service
-        //         handle! {
-        //             Ok(ServiceResponse::new(req, handler::html_response(body, true /* cache */)))
-        //         }
-        //     }
-        //     Some(false) => {
-        //         cu::info!("(passthrough,from-cache) {}", req.uri());
-        //         handle!(passthrough)
-        //     }
-        //     _ => {}
-        // }
-
-        // otherwise, we have to call the inner service to check the content-type
-        // let cache = Arc::clone(&self.wrapper_paths);
-
         // call inner service to serve the file
-
+        let path = self.path.clone();
         handle!(|mut res| {
             let status = res.status();
             let pathname = res.request().path();
@@ -151,6 +89,21 @@ where
                 // cache.insert(pathname.to_owned(), false);
                 handler::set_cache(res.response_mut(), true);
                 return Ok(res.map_into_boxed_body());
+            }
+            // check if the 404 path is a directory - show listing instead of error page
+            if status == StatusCode::NOT_FOUND {
+                if path.is_dir() {
+                    let rel = res.request().path().trim_start_matches('/');
+                    if let Ok(fs_path) = path.join(rel).normalize_exists() {
+                        if fs_path.starts_with(&path) && fs_path.is_dir() {
+                            cu::info!("200 OK - {} (directory listing)", res.request().uri());
+                            let body = handler::directory_listing(&fs_path, res.request().path());
+                            let body = handler::inject_bootstrap(body.as_bytes());
+                            let (req, _) = res.into_parts();
+                            return Ok(ServiceResponse::new(req, handler::html_response(body)));
+                        }
+                    }
+                }
             }
             if status.is_client_error() || status.is_server_error() {
                 // error (likely resource not found)

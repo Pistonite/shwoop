@@ -1,5 +1,5 @@
 use std::net::{IpAddr, UdpSocket};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use actix_web::guard::{self, Guard};
@@ -181,15 +181,28 @@ pub fn cache_control_value(cache: bool) -> HeaderValue {
 
 static DIR_LISTING_HTML: &str = include_str!("dir.html");
 
-pub fn directory_listing(fs_path: &std::path::Path, url_path: &str) -> String {
-    let mut entries: Vec<_> = match std::fs::read_dir(fs_path) {
-        Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
-        Err(_) => vec![],
+pub fn directory_listing(fs_path: &Path, url_path: &str) -> String {
+    let mut names: Vec<String> = match cu::fs::read_dir(fs_path) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let mut name = e.file_name().into_string().ok()?;
+                if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    name.push('/');
+                }
+                Some(name)
+            })
+            .collect(),
+        Err(e) => {
+            cu::warn!("failed to get directory listing: {e:?}");
+            vec![]
+        }
     };
-    entries.sort_by(|a, b| {
-        let a_dir = a.file_type().map(|t| t.is_dir()).unwrap_or(false);
-        let b_dir = b.file_type().map(|t| t.is_dir()).unwrap_or(false);
-        b_dir.cmp(&a_dir).then_with(|| a.file_name().cmp(&b.file_name()))
+    // directories (trailing /) sort before files, then alphabetically within each group
+    names.sort_by(|a, b| {
+        let a_dir = a.ends_with('/');
+        let b_dir = b.ends_with('/');
+        b_dir.cmp(&a_dir).then_with(|| a.cmp(b))
     });
 
     let url_path = if url_path.ends_with('/') {
@@ -200,47 +213,33 @@ pub fn directory_listing(fs_path: &std::path::Path, url_path: &str) -> String {
 
     let mut rows = String::new();
     if url_path != "/" {
-        rows.push_str("<tr><td><a href=\"../\" class=\"up\">../</a></td><td class=\"col-size\"></td><td class=\"col-date\"></td></tr>\n");
+        rows.push_str("<tr><td><a href=\"../\" class=\"up\">📁 ../</a></td></tr>\n");
     }
-    for entry in &entries {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        let meta = entry.metadata().ok();
-        let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+    for name in &names {
+        let is_dir = name.ends_with('/');
+        let stem = if is_dir {
+            &name[..name.len() - 1]
+        } else {
+            name.as_str()
+        };
 
         rows.push_str("<tr><td><a href=\"");
-        rows.push_str(&dir_url_encode(&name));
+        rows.push_str(&dir_url_encode(stem));
         if is_dir {
             rows.push('/');
         }
         rows.push_str("\" class=\"");
         rows.push_str(if is_dir { "d" } else { "f" });
         rows.push_str("\">");
-        dir_html_escape(&name, &mut rows);
+        rows.push_str(if is_dir { "📁 " } else { "📄 " });
+        dir_html_escape(stem, &mut rows);
         if is_dir {
             rows.push('/');
         }
-        rows.push_str("</a></td><td class=\"col-size\">");
-        if let Some(ref m) = meta {
-            if !is_dir {
-                rows.push_str(&dir_format_size(m.len()));
-            }
-        }
-        rows.push_str("</td><td class=\"col-date\">");
-        if let Some(ref m) = meta {
-            if let Ok(t) = m.modified() {
-                rows.push_str(&dir_format_date(t));
-            }
-        }
-        rows.push_str("</td></tr>\n");
+        rows.push_str("</a></td></tr>\n");
     }
 
-    let mut path_escaped = String::new();
-    dir_html_escape(&url_path, &mut path_escaped);
-
-    DIR_LISTING_HTML
-        .replace("PLACEHOLDER_PATH", &path_escaped)
-        .replacen("PLACEHOLDER_ROWS", &rows, 1)
+    DIR_LISTING_HTML.replacen("PLACEHOLDER_ROWS", &rows, 1)
 }
 
 fn dir_html_escape(s: &str, out: &mut String) {
@@ -266,41 +265,6 @@ fn dir_url_encode(s: &str) -> String {
         }
     }
     out
-}
-
-fn dir_format_size(bytes: u64) -> String {
-    if bytes < 1024 {
-        format!("{bytes} B")
-    } else if bytes < 1024 * 1024 {
-        format!("{:.1} KB", bytes as f64 / 1024.0)
-    } else {
-        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
-    }
-}
-
-fn dir_format_date(t: std::time::SystemTime) -> String {
-    let Ok(dur) = t.duration_since(std::time::UNIX_EPOCH) else {
-        return String::new();
-    };
-    let secs = dur.as_secs();
-    let min = (secs / 60) % 60;
-    let hour = (secs / 3600) % 24;
-    let (y, m, d) = dir_days_to_ymd(secs / 86400);
-    format!("{y:04}-{m:02}-{d:02} {hour:02}:{min:02}")
-}
-
-fn dir_days_to_ymd(days: u64) -> (u32, u32, u32) {
-    // Hinnant's algorithm: http://howardhinnant.github.io/date_algorithms.html
-    let z = days as i64 + 719468;
-    let era = if z >= 0 { z } else { z - 146096 } / 146097;
-    let doe = (z - era * 146097) as u64;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe as i64 + era * 400 + if m <= 2 { 1 } else { 0 };
-    (y as u32, m as u32, d as u32)
 }
 
 #[cfg(test)]

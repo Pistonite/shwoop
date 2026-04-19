@@ -40,7 +40,7 @@ impl SessionMgr {
                 1 => cu::info!("notified 1 client to reload "),
                 x => cu::info!("notified {x} clients to reload"),
             }
-        } 
+        }
         let mut self_sessions = self.sessions.lock().unwrap();
         self_sessions.extend(sessions);
     }

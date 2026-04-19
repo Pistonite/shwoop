@@ -101,7 +101,9 @@ async fn poll_next_event_with_state(
                                     // don't reload if build failed
                                     cu::error!("{e:?}");
                                     if is_first_failure {
-                                        cu::hint!("the output from the build command will be printed for debugging on the next run");
+                                        cu::hint!(
+                                            "the output from the build command will be printed for debugging on the next run"
+                                        );
                                     }
                                     sessions.send_to_all(Msg::BuildFailed).await;
                                     *state = State::Idle;
@@ -137,20 +139,17 @@ pub async fn run_build(build_command: &[String], print: bool) -> cu::Result<()> 
         (true, _) => {
             // always print the message
             spinner.debug()
-        },
-        (false, true) => {
-            spinner.print()
         }
-        (false, false) => {
-            spinner
-        }
+        (false, true) => spinner.print(),
+        (false, false) => spinner,
     };
     let command = Path::new(build_command_bin)
         .command()
         .args(build_command.iter().skip(1))
         .stdoe(spinner)
         .stdin_null();
-    let (child, progress, _) = cu::check!(command.co_spawn().await, "failed to spawn build command")?;
+    let (child, progress, _) =
+        cu::check!(command.co_spawn().await, "failed to spawn build command")?;
     if let Err(e) = child.co_wait_nz().await {
         if cu::lv::D.enabled() {
             cu::rethrow!(e, "build command failed");

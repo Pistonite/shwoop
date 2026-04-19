@@ -67,7 +67,7 @@ export const startWebsocketSession = (
                 }
                 case "build-succeeded": {
                     buildSucceess = true;
-                    status.updatePerfNumber("build", performance.now()-buildStartedTime);
+                    status.updatePerfNumber("build", performance.now() - buildStartedTime);
                     return;
                 }
                 default: {

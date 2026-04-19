@@ -14,7 +14,7 @@ export const PerfNameMap = [
     ["build", "build"],
     ["page-load", "page load"],
     ["stabilize", "page stabilize"],
-    ["track", "state traversal"]
+    ["track", "state traversal"],
 ] as const;
 export type PerfName = (typeof PerfNameMap)[number][0];
 

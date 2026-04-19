@@ -40,7 +40,7 @@ tasks:
     - task: cargo:fmt-fix
 
   upgrade:
-    - pnpm up mono-dev
+    - pnpm up mono-dev @types/node
     - pnpm dedupe
     - pnpm dedupe --check
 

@@ -16,9 +16,7 @@ fn main(args: args::Args) -> cu::Result<()> {
             "failed to create runtime for initial build"
         )?;
         let command = args.command.clone();
-        let result = runtime.block_on(async move {
-            reloader::run_build(&command, true).await
-        });
+        let result = runtime.block_on(async move { reloader::run_build(&command, true).await });
         if let Err(e) = result {
             cu::error!("initial build failed: {e:?}");
             cu::info!("trying to start server anyway...");
