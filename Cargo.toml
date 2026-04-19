@@ -1,14 +1,20 @@
 [package]
 name = "shwoop"
-description = "Tool to serve static webpage with optional build-and-hot-reload feature"
+description = "Tool to serve static webpage with build-and-hot-reload feature"
 repository = "https://github.com/Pistonite/shwoop"
 authors = ["Pistonight <pistonknight@outlook.com>"]
 version = "0.2.0"
 edition = "2024"
 license = "MIT"
-exclude = [
-    ".github/**/*",
-    "Taskfile.yml",
+keywords = ["hot-reload", "dev-server", "static-files", "web", "build"]
+categories = ["development-tools", "web-programming::http-server", "command-line-utilities"]
+include = [
+    "dist/**/*.js",
+    "dist/**/*.rs",
+    "dist/**/*.js.map",
+    "src/**/*.rs",
+    "src/**/*.html",
+    "/LICENSE",
 ]
 
 
@@ -30,3 +36,7 @@ oneshot = { version = "0.2.1", features = [ "async" ] }
 watchexec = "8.2.0"
 watchexec-events = "6.1.0"
 watchexec-signals = "5.0.1"
+
+[package.metadata.binstall.signing]
+algorithm = "minisign"
+pubkey = "RWThJQKJaXayoZBe0YV5LV4KFkQwcqQ6Fg9dJBz18JnpHGdf/cHUyKs+"

@@ -44,22 +44,35 @@ tasks:
     - pnpm dedupe
     - pnpm dedupe --check
 
-  dist-check:
-    - task: git:check-modification
-      vars:
-        CHECK_PATH: dist
-        CHECK_MESSAGE: found diff in 'dist', please run `task build` and commit your changes
-
   publish:
-    - task: git:check-modification
-      vars:
-        CHECK_MESSAGE: clean work tree is required before publishing
-    - git checkout dist
-    - git pull
-    - task: install
-    - task: check
-    - task: build
-    - task: test
+    cmds:
+      - task: pre-publish
+      - task: do-publish
 
-
+  pre-publish:
+    internal: true
+    cmds:
+      - task: git:check-modification
+        vars:
+          CHECK_MESSAGE: clean work tree is required before publishing
+      - git checkout dist
+      - git pull
+      - task: install
+      - task: check
+      - task: build
+      - task: test
+      - task: git:check-modification
+        vars:
+          CHECK_MESSAGE: modification found after preparing to publish!
+  do-publish:
+    internal: true
+    vars:
+      VERSION:
+        sh: cargo run -- --version | tr -d 'shwoop '
+    cmds:
+      - git tag 'v{{.VERSION}}'
+      - git push origin 'v{{.VERSION}}'
+      - cargo publish
+      
+    
 
