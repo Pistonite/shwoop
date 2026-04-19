@@ -41,10 +41,11 @@ jobs:
           ecma-pnpm: true
           rust: stable
           rust-native: ${{ matrix.target }}
+      - run: pnpm install
+      - run: task build-client
       - uses: Pistonight/mono-dev/actions/rust-xplat@main
         with:
           arch: ${{ matrix.target }}
           binary: shwoop
-          build-task: build
           
 
