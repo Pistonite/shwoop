@@ -1,9 +1,9 @@
 use std::pin::Pin;
 
+use actix_web::HttpResponse;
 use actix_web::body::{self, BoxBody, MessageBody};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready};
 use actix_web::http::StatusCode;
-use actix_web::HttpResponse;
 
 use crate::server::handler;
 
@@ -13,9 +13,7 @@ pub struct InjectHotReloadMiddleware {
 }
 impl InjectHotReloadMiddleware {
     pub fn new(raw: bool) -> Self {
-        Self {
-            raw,
-        }
+        Self { raw }
     }
 }
 impl<S, B> Transform<S, ServiceRequest> for InjectHotReloadMiddleware
@@ -161,10 +159,7 @@ where
                     let body = make_error_page(status);
                     let body = handler::inject_bootstrap(body.as_bytes());
                     let (req, _) = res.into_parts();
-                    return Ok(ServiceResponse::new(
-                        req,
-                        handler::html_response(body),
-                    ));
+                    return Ok(ServiceResponse::new(req, handler::html_response(body)));
                 }
                 cu::error!("{} - {}", status, res.request().uri());
                 handler::set_cache(res.response_mut(), false);
@@ -191,10 +186,7 @@ where
                 }
             };
             let body = handler::inject_bootstrap(&body_bytes);
-            Ok(ServiceResponse::new(
-                req,
-                handler::html_response(body),
-            ))
+            Ok(ServiceResponse::new(req, handler::html_response(body)))
         });
     }
 }
@@ -208,5 +200,4 @@ fn make_error_page(status: StatusCode) -> String {
     ERROR_PAGE
         .replacen("404", &status.as_u16().to_string(), 2)
         .replacen("Not Found", status.canonical_reason().unwrap_or("Error"), 2)
-        .into()
 }

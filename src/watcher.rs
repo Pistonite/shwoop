@@ -39,6 +39,7 @@ pub struct Watcher {
 
 impl Watcher {
     pub async fn start(self) -> cu::Result<()> {
+        cu::info!("watcher started");
         let wx = {
             let output_path = self.path.clone();
             let files_in_output_cache = DashMap::<String, bool>::default();
@@ -152,8 +153,7 @@ impl Watcher {
             _ = self.stop_signal => {
             }
         };
-        cu::debug!("watcher stopped");
-        cu::cli::reset_thread_name();
+        cu::info!("watcher stopped");
 
         Ok(())
     }

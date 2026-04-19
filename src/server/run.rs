@@ -34,7 +34,7 @@ async fn run_server(
 ) -> cu::Result<()> {
     let is_file = serve_path.is_file();
     let num_cpus = thread::available_parallelism()
-        .map(|x| usize::from(x))
+        .map(usize::from)
         .unwrap_or(1);
     // don't need that many workers - use 25% of threads and at most 4
     // 4 threads -> 1 worker

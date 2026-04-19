@@ -15,9 +15,12 @@ pub fn start(
     let (send, recv) = mpsc::channel();
 
     let handle = thread::spawn(move || {
-        let runtime = cu::check!(tokio::runtime::LocalRuntime::new(), "failed to create runtime for reloader")?;
+        let runtime = cu::check!(
+            tokio::runtime::LocalRuntime::new(),
+            "failed to create runtime for reloader"
+        )?;
         runtime.block_on(async move {
-            cu::debug!("reloader started");
+            cu::info!("reloader started");
             let mut state = State::Idle;
             let mut should_build = false;
             loop {
@@ -27,7 +30,8 @@ pub fn start(
                     &recv,
                     &sessions,
                     &build_command,
-                ).await;
+                )
+                .await;
                 let event = match result {
                     ControlFlow::Continue(false) => break,
                     ControlFlow::Continue(true) => continue,
@@ -43,7 +47,7 @@ pub fn start(
                     }
                 }
             }
-            cu::debug!("reloader stopped");
+            cu::info!("reloader stopped");
             cu::Ok(())
         })
     });

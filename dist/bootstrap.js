@@ -33,7 +33,7 @@
             const topLocation = topWindow.location;
             const topPath = topLocation.pathname + topLocation.search + topLocation.hash;
             if (topPath !== correctPath) {
-                navigateParent(correctPath, replace);
+                navigateParent(correctPath, true);
                 return;
             }
             // patch all navigation to route through parent
@@ -96,7 +96,7 @@
     window["__shwoop_top_page"] = true;
     const script = document.createElement("script");
     script.type = "module";
-    script.src = "/shwoop-bf52606e-9f65-4f5e-8a2f-016ad7cfa92a-xxx-Dkh2PcE8.js";
+    script.src = "/shwoop-bf52606e-9f65-4f5e-8a2f-016ad7cfa92a-xxx-XnGAqWWg.js";
     script.dataset.isshwoop = "true";
     document.head.appendChild(script);
 

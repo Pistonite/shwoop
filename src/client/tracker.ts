@@ -60,20 +60,24 @@ export class StateTracker {
             this.status.toast("red", "failed to get body of root frame, state will not be tracked");
             // attempt to wait for at least some time for the render to be ready
             await sleep(STABILIZE_DEBOUNCE_MS_MIN);
+            this.status.updatePerfNumber("stabilize", STABILIZE_DEBOUNCE_MS_MIN);
             return false;
         }
-        const pageStabilizationStartTime = performance.now();
-        const stabilizationDebounceMs = this.lastStabilizationMs
-            ? Math.max(this.lastStabilizationMs * 2, STABILIZE_DEBOUNCE_MS_MIN)
-            : STABILIZE_DEBOUNCE_MS;
-        if (!(await this.waitForStabilization(rootBody, stabilizationDebounceMs))) {
-            this.status.toast(
-                "red",
-                `the document structure did not stablize after ${stabilizationDebounceMs}, state will not be tracked`,
-            );
-            return false;
+        {
+            const stop = this.status.startPerfMeasure("stabilize");
+            const stabilizationDebounceMs = this.lastStabilizationMs
+                ? Math.max(this.lastStabilizationMs * 2, STABILIZE_DEBOUNCE_MS_MIN)
+                : STABILIZE_DEBOUNCE_MS;
+            if (!(await this.waitForStabilization(rootBody, stabilizationDebounceMs))) {
+                this.status.toast(
+                    "red",
+                    `the document structure did not stablize after ${stabilizationDebounceMs}, state will not be tracked`,
+                );
+                this.status.updatePerfNumber("stabilize", -1);
+                return false;
+            }
+            stop();
         }
-        log(`took ${Math.floor(performance.now()-pageStabilizationStartTime)}ms for page stabilization`);
         const mutationWhileAddingElementObserver = new MutationObserver(() => {
             this.changedWhileStarting = true;
             mutationWhileAddingElementObserver.disconnect();
@@ -86,24 +90,25 @@ export class StateTracker {
         );
 
         if (!this.enabled) {
+            this.status.updatePerfNumber("track", -1);
             return false;
         }
 
-        const startTime = performance.now();
+        const stop = this.status.startPerfMeasure("track");
 
         let elemCount = 0;
         this.rootFrame.window()?.addEventListener(
             "scroll",
             () => {
-                const sTop = rootBody.scrollTop;
-                const sLeft = rootBody.scrollLeft;
-                console.log(sTop, sLeft);
+                const rect = this.rootFrame.document()?.body?.getBoundingClientRect();
+                const sTop = rect?.top || 0;
+                const sLeft = rect?.left || 0;
                 if (sTop || sLeft) {
                     this.state.set("", {
                         id: "",
                         tag: "",
-                        scrollTop: sTop,
-                        scrollLeft: sLeft,
+                        scrollTop: -sTop,
+                        scrollLeft: -sLeft,
                     });
                 } else {
                     this.state.delete("");
@@ -201,8 +206,8 @@ export class StateTracker {
             mutationWhileAddingElementObserver.disconnect();
         }
 
-        const elapsed = Math.floor(performance.now() - startTime);
-        log(`took ${elapsed}ms to traverse state for ${elemCount} nodes`);
+        log(`tracking state for ${elemCount} node(s)`);
+        stop();
 
         return true;
     }
@@ -213,13 +218,13 @@ export class StateTracker {
             return;
         }
         let elemCount = 0;
-        // let windowScrollTop = 0;
-        // let windowScrollLeft = 0;
+        let windowScrollTop = 0;
+        let windowScrollLeft = 0;
         for (const [path, entry] of this.state) {
             const { id, tag, scrollTop, scrollLeft } = entry;
             if (!path) {
-                // windowScrollTop = scrollTop;
-                // windowScrollLeft = scrollLeft;
+                windowScrollTop = scrollTop;
+                windowScrollLeft = scrollLeft;
                 continue;
             }
             const elem = checkedElementAtPath(frame, body, id, path, tag);
@@ -236,12 +241,15 @@ export class StateTracker {
             elemCount++;
         }
         if (elemCount) {
-            log(`applied state for ${elemCount} nodes`);
+            log(`applied state for ${elemCount} node(s)`);
         }
-        // if (windowScrollTop || windowScrollLeft) {
-        //     frame.contentWindow?.scrollTo(windowScrollLeft, windowScrollTop);
-        //     log("applied window scroll");
-        // }
+        if (windowScrollTop || windowScrollLeft) {
+            const w = frame.window();
+            if (w) {
+                w.scrollTo(windowScrollLeft, windowScrollTop);
+                log("applied window scroll");
+            }
+        }
     }
 
     /**

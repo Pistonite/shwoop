@@ -33,7 +33,7 @@
             const topLocation = topWindow.location;
             const topPath = topLocation.pathname + topLocation.search + topLocation.hash;
             if (topPath !== correctPath) {
-                navigateParent(correctPath, replace);
+                navigateParent(correctPath, true);
                 return;
             }
             // patch all navigation to route through parent

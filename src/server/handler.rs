@@ -167,6 +167,12 @@ pub fn html_response(body: Vec<u8>) -> HttpResponse {
 
 pub fn cache_control_value(cache: bool) -> HeaderValue {
     HeaderValue::from_static(if cache {
+        // this ensures files that are unlikely to be changed, such as
+        // assets/css, are cached for faster loads (which is very important
+        // to reduce flickering while reloading)
+        // If they do change,
+        // the browser will always revalidate to make sure it is correct
+        // on the next call.
         "max-age=0,stale-while-revalidate=3600"
     } else {
         "no-store"

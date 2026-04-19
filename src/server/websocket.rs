@@ -1,8 +1,8 @@
 use std::sync::Mutex;
 use std::sync::atomic::AtomicU32;
 
-use actix_web::{HttpRequest, HttpResponse};
 use actix_web::web::Payload;
+use actix_web::{HttpRequest, HttpResponse};
 use actix_ws::Message;
 
 static NEXT_ID: AtomicU32 = AtomicU32::new(1);
@@ -19,22 +19,28 @@ impl SessionMgr {
     }
 
     pub async fn reload_all(&self) {
-        let mut sessions = self.sessions.lock().unwrap();
+        // to avoid holding the lock across awaits, we will
+        // take the existing sessions out, then after reloading
+        // we will put them back
+        let mut sessions: Vec<Session> = {
+            let mut sessions = self.sessions.lock().unwrap();
+            sessions.drain(..).collect()
+        };
         let mut i = 0;
-        cu::info!("notifying clients to reload...");
         while i < sessions.len() {
             if !sessions[i].reload().await {
                 sessions.swap_remove(i);
             } else {
-                i+=1;
+                i += 1;
             }
         }
-        if sessions.is_empty() {
-            drop(sessions);
-            cu::debug!("no active websocket sessions");
-            return;
+        match sessions.len() {
+            0 => cu::debug!("no active websocket sessions"),
+            1 => cu::info!("notified 1 client to reload"),
+            x => cu::info!("notified {x} clients to reload"),
         }
-
+        let mut self_sessions = self.sessions.lock().unwrap();
+        self_sessions.extend(sessions);
     }
 }
 
@@ -48,7 +54,6 @@ impl Session {
         req: HttpRequest,
         body: Payload,
     ) -> Result<(Self, HttpResponse), actix_web::Error> {
-
         let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         let (response, session, mut recv) = actix_ws::handle(&req, body)?;
 
@@ -78,9 +83,7 @@ impl Session {
             });
         }
 
-        let session = Session {
-            inner: session
-        };
+        let session = Session { inner: session };
 
         Ok((session, response))
     }

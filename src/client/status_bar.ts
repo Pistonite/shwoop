@@ -83,7 +83,7 @@ export class StatusBar {
         });
         const buttonPerf = document.createElement("button");
         buttonPerf.title = "Show performance";
-        buttonPerf.textContent = "icon";
+        buttonPerf.textContent = "🕙";
         buttonPerf.addEventListener("click", () => {
             const messages: string[] = [];
             for (const key in this.perfData) {
@@ -100,17 +100,26 @@ export class StatusBar {
             }
         });
 
-
         const divButtons = document.createElement("div");
         divButtons.className = CLASSNAME + "-buttons";
-        divButtons.append(this.buttonHotReload, this.buttonStateTracking);
+        divButtons.append(this.buttonHotReload, this.buttonStateTracking, buttonPerf);
 
         this.labelContainer.append(this.label);
         this.div.append(this.labelContainer, divButtons);
 
+        // note here right: 24px
+        // this accounts for the scrollbar in the iframe.
+        // however this leads to the weird quirk that in the first-render,
+        // there's no iframe (the page is directly in the top level document),
+        // so there is actually the window scroll bar, so the status bar
+        // appears shifted to the left.
+        // with some size observer and passing data between frames, this can
+        // be fixed, but it's not worth the effort
+        // this is now a "feature" to tell if the document has been reloaded, lmao
+
         let styles = `
             .${CLASSNAME} {
-                position: fixed; bottom: 0; right: 20px; height: 24px;
+                position: fixed; bottom: 0; right: 24px; height: 24px;
                 z-index: 9999;
                 font-family: ui-monospace, Menlo, Consolas, monospace;
                 font-size: 12px;
@@ -241,7 +250,7 @@ export class StatusBar {
         const start = performance.now();
         return () => {
             this.perfData[name] = performance.now() - start;
-        }
+        };
     }
 }
 

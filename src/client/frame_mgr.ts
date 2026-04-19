@@ -1,4 +1,4 @@
-import { Frame, CLASSNAME } from "./frame.ts";
+import { CLASSNAME, Frame } from "./frame.ts";
 import type { StatusBar } from "./status_bar.ts";
 import { StateTracker } from "./tracker.ts";
 
@@ -14,45 +14,6 @@ export class FrameMgr {
         private tracker: StateTracker | undefined,
     ) {}
 
-    /** Immediately show the pathname in the frame */
-    public async switchTo(pathname: string): Promise<boolean> {
-        const frame = Frame.newIFrame(`${this.nextZIndex++}`);
-        const existingFrames = document.querySelectorAll<HTMLIFrameElement>(`iframe.${CLASSNAME}`);
-        const length = existingFrames.length;
-        for (let i = 0; i < length; i++) {
-            const f = existingFrames[i];
-            // bring existingFrames to lower z level than default
-            f.style.zIndex = f === this.active?.element() ? "2" : "1";
-        }
-        // show the new frame
-        this.active = frame;
-        this.currentPathname = pathname;
-        await frame.show(this.status, pathname);
-        if (this.active !== frame || this.currentPathname !== pathname) {
-            // no longer current after the frame got shown
-            frame.remove();
-            return false;
-        }
-        this.copyNodesFromActiveFrame();
-        this.tracker?.stop();
-        this.tracker = undefined;
-        if (this.status.isStateTrackingEnabled()) {
-            // restart tracking the new frame
-            const tracker = new StateTracker(this.status, frame, undefined);
-            const ok = await tracker.start();
-            if (this.active !== frame || this.currentPathname !== pathname) {
-                // no longer current after the frame starts being tracked
-                tracker.stop();
-                frame.remove();
-                return false;
-            }
-            if (ok) {
-                this.tracker = tracker;
-            }
-        }
-        this.cleanDocumentSync();
-        return true;
-    }
     /** Prepare the page in the background and when ready, bring the frame to the top */
     public async reload(): Promise<boolean> {
         this.reloadingScheduled = true;
@@ -71,6 +32,18 @@ export class FrameMgr {
             this.reloadingScheduled = false;
             const frame = Frame.newIFrame("10");
             const pathname = this.currentPathname;
+            // if there aren't any frames yet, the frame we are about to show
+            // will appear immediately. this will cause flickering since
+            // the CSS are still being applied. usually we load the frame
+            // behind an existing frame. in case there is none, then
+            // we use a hack to set opacity to very low so it's barely visible
+            // (setting display:none might cause browser to de-prioritize loading it)
+            //
+            // this will only last for a few hundred milliseconds so it's barely noticable
+            const hasExistingFrame = !!document.querySelector(`iframe.${CLASSNAME}`);
+            if (!hasExistingFrame) {
+                (frame.element() as HTMLIFrameElement).style.opacity = "0.01";
+            }
             await frame.show(this.status, this.currentPathname);
             // did we switch path during this time?
             if (this.currentPathname !== pathname) {
@@ -110,6 +83,7 @@ export class FrameMgr {
             }
             // all ready, bring the frame to top
             frame.setZIndex(`${this.nextZIndex++}`);
+            (frame.element() as HTMLIFrameElement).style.opacity = "";
             this.active = frame;
             // clean document needs to be async. otherwise pushing
             // the frame to top and removing the other nodes at the same time
