@@ -32,13 +32,18 @@ const writeIndexHtml = async () => {
 const JS_CHUNK_NAME = "shwoop-bf52606e-9f65-4f5e-8a2f-016ad7cfa92a";
 
 const postProcess = (): Plugin => {
+    let root: string = "";
     return {
         name: "shwoop-post-process",
         apply: "build",
 
+        configResolved: (config) => {
+            root = config.root;
+        },
+
         closeBundle: async () => {
-            const srcDir = path.resolve(import.meta.dirname, "src");
-            const distDir = path.resolve(import.meta.dirname, "dist");
+            const srcDir = path.resolve(root, "src");
+            const distDir = path.resolve(root, "dist");
             const files = (await fs.readdir(distDir)).filter((f) => f.endsWith(".js.map"));
             if (files.length === 0) {
                 throw new Error("No .js.map file found in dist");
