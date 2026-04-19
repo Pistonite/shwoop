@@ -44,6 +44,6 @@ jobs:
         with:
           arch: ${{ matrix.target }}
           binary: shwoop
-          build-task: exec -- build
+          build-task: build
           
 
