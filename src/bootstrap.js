@@ -105,7 +105,7 @@
     window["__shwoop_top_page"] = true;
     const script = document.createElement("script");
     script.type = "module";
-    script.src = "/shwoop-bf52606e-9f65-4f5e-8a2f-016ad7cfa92a-xxx-LaSK2wYf.js";
+    script.src = PLACEHOLDER_VITE_SCRIPT_SOURCE;
     script.dataset.isshwoop = "true";
     document.head.appendChild(script);
 

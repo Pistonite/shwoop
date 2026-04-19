@@ -7,4 +7,5 @@ package-lock.json
 .prettierignore
 eslint.config.js
 tsconfig*.json
-/dist
+/index.html
+/dist/index.html

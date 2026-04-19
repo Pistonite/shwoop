@@ -7,18 +7,20 @@ use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform, forwar
 use actix_web::http::StatusCode;
 use actix_web::http::header::{CONTENT_TYPE, HeaderMap};
 use actix_web::{HttpRequest, HttpResponse};
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
+
+use crate::server::handler;
 
 // --- this bucket of trait soup below is boilerplate for a middleware
 pub struct InjectHotReloadMiddleware {
-    enabled: bool,
-    // cache: Arc<DashMap<String, String>>
+    raw: bool,
+    path_is_webpage_cache: Arc<DashMap<String, bool>>,
 }
 impl InjectHotReloadMiddleware {
-    pub fn new(enabled: bool, cache: Arc<DashMap<String, String>>) -> Self {
+    pub fn new(raw: bool, cache: Arc<DashMap<String, bool>>) -> Self {
         Self {
-            enabled,
-            // cache,
+            raw,
+            path_is_webpage_cache: cache,
         }
     }
 }
@@ -35,18 +37,17 @@ where
     type Future = std::future::Ready<Result<Self::Transform, ()>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        cu::info!("creating hot reload middleware transform");
         std::future::ready(Ok(InjectService {
-            enabled: self.enabled,
-            // cache: Arc::clone(&self.cache),
+            raw: self.raw,
+            wrapper_paths: Arc::clone(&self.path_is_webpage_cache),
             service,
         }))
     }
 }
 
 pub struct InjectService<S> {
-    enabled: bool,
-    // cache: Arc<DashMap<String, String>>,
+    raw: bool,
+    wrapper_paths: Arc<DashMap<String, bool>>,
     service: S,
 }
 
@@ -64,186 +65,201 @@ where
 
     fn call(&self, sreq: ServiceRequest) -> Self::Future {
         let req = sreq.request();
-        if !req_is_browser(req) {
-            let fut = self.service.call(sreq);
-            return Box::pin(async move {
-                let res = fut.await?;
-                Ok(res.map_into_boxed_body())
-            });
+        let pathname = req.path();
+
+        macro_rules! handle {
+            (passthrough) => {{
+                handle!(|mut res| {
+                    handler::set_cache(res.response_mut(), false);
+                    Ok(res.map_into_boxed_body())
+                })
+            }};
+            (|$res:ident| $code:stmt) => {{
+                let fut = self.service.call(sreq);
+                return Box::pin(async move {
+                    let $res = fut.await?;
+                    $code
+                });
+            }};
+            (|mut $res:ident| $code:stmt) => {{
+                let fut = self.service.call(sreq);
+                return Box::pin(async move {
+                    let mut $res = fut.await?;
+                    $code
+                });
+            }};
+            ($code:stmt) => {{
+                return Box::pin(async move { $code });
+            }};
         }
-        // if is_html_path(req.path()) && !req_is_raw(req) {
-        //     if self.cache.get(req.path()) {
-        //     }
+
+        if self.raw || !handler::is_browser(req) {
+            cu::info!("(passthrough) {pathname}");
+            handle!(passthrough);
+        }
+
+        // let is_raw = handler::is_raw(req);
+        // if is_raw {
+        //     handle!(|mut res| {
+        //         let status = res.status();
+        //         if !status.is_client_error() && !status.is_server_error() {
+        //             // if not error (success, redirection...), return the inner response
+        //             handler::set_cache(res.response_mut(), false);
+        //             cu::info!("(raw) {} - {}", status, res.request().uri());
+        //             return Ok(res.map_into_boxed_body())
+        //         }
+        //         // did not find the raw resource
+        //         let req = res.request();
+        //         let pathname = req.path();
+        //         if handler::probably_webpage(pathname) {
+        //             // if probably requesting HTML page, return error page
+        //             let body = make_error_page(status);
+        //             cu::error!("(raw,webpage) {} - {}", status, res.request().uri());
+        //             let (req, _) = res.into_parts();
+        //             return Ok(ServiceResponse::new(req, handler::html_response(body, false)));
+        //         }
+        //
+        //         handler::set_cache(res.response_mut(), false);
+        //         cu::error!("(raw) {} - {}", status, res.request().uri());
+        //         Ok(res.map_into_boxed_body())
+        //     });
         // }
-        let enabled = self.enabled;
-        Box::pin(async move {
-            let res = fut.await?;
-            if !enabled {
+
+        // let pathname = req.path();
+
+        // // if we previously requested the page then we know if it is a webpage
+        // // (this assumes paths don't suddenly change between assets and webpage, which is
+        // // reasonable)
+        // match self.wrapper_paths.get(pathname).map(|x| *x) {
+        //     Some(true) => {
+        //         let body = do_inject("".into(), pathname);
+        //         let (req, _) = sreq.into_parts();
+        //         cu::info!("(wrapper,from-cache) {}", req.uri());
+        //         // bypass inner service
+        //         handle! {
+        //             Ok(ServiceResponse::new(req, handler::html_response(body, true /* cache */)))
+        //         }
+        //     }
+        //     Some(false) => {
+        //         cu::info!("(passthrough,from-cache) {}", req.uri());
+        //         handle!(passthrough)
+        //     }
+        //     _ => {}
+        // }
+
+        // otherwise, we have to call the inner service to check the content-type
+        // let cache = Arc::clone(&self.wrapper_paths);
+
+        // call inner service to serve the file
+
+        handle!(|mut res| {
+            let status = res.status();
+            let pathname = res.request().path();
+            // never inject or cache 1XX and 3XX
+            if status.is_informational() || status.is_redirection() {
+                cu::debug!("{} - {}", status, res.request().uri());
+                // cache.insert(pathname.to_owned(), false);
+                handler::set_cache(res.response_mut(), true);
                 return Ok(res.map_into_boxed_body());
             }
-            process_request(res).await
-        })
-    }
-}
-// --- above trait soup is boilerplate for a middleware
-
-async fn process_request<B>(
-    res: ServiceResponse<B>,
-) -> Result<ServiceResponse<BoxBody>, actix_web::Error>
-where
-    B: MessageBody + 'static,
-    B::Error: std::fmt::Debug + std::fmt::Display,
-{
-    if !req_is_browser(res.request()) {
-        return Ok(res.map_into_boxed_body());
-    }
-
-    let status = res.status();
-    if status.is_client_error() || status.is_server_error() {
-        // handle error case
-        if is_html_path(res.request().path()) {
-            // if the error looks like a request to a page that might not exist yet
-            // return an error page
-            if res_is_raw(&res) {
-                // fabricate an error page to return as a raw error page
-                let pathname = res.request().path().to_string();
-                let body = make_error_page(
-                    status.as_u16(),
-                    status.canonical_reason().unwrap_or("Error"),
-                    &pathname,
-                );
-                let (http_req, http_res) = res.into_parts();
-                let headers = http_res.headers().clone();
-                return Ok(build_response(http_req, StatusCode::OK, headers, body));
+            if status.is_client_error() || status.is_server_error() {
+                // error (likely resource not found)
+                if handler::probably_webpage(pathname) {
+                    cu::error!("{} - {} (injected)", status, res.request().uri());
+                    let body = make_error_page(status);
+                    let body = handler::inject_bootstrap(body.as_bytes());
+                    let (req, _) = res.into_parts();
+                    return Ok(ServiceResponse::new(
+                        req,
+                        handler::html_bytes_response(body),
+                    ));
+                }
+                cu::error!("{} - {}", status, res.request().uri());
+                handler::set_cache(res.response_mut(), false);
+                return Ok(res.map_into_boxed_body());
+            };
+            // success - we can check the content type
+            let is_webpage = handler::is_html(res.response());
+            if !is_webpage {
+                cu::debug!("{} - {}", status, res.request().uri());
+                // cache - but browser will revalidate each time
+                handler::set_cache(res.response_mut(), true);
+                return Ok(res.map_into_boxed_body());
             }
-            // error page but not requesting raw, make a placeholder wrapper
-            // that supports reloading the page when it comes live
-            let body = do_inject("".into(), "");
-            let (http_req, http_res) = res.into_parts();
-            let headers = http_res.headers().clone();
-            return Ok(build_response(http_req, StatusCode::OK, headers, body));
-        }
-        // non-html error, just return failure response as is
-        return Ok(res.map_into_boxed_body());
-    }
-
-    // successfully found the resource
-    if !res_is_html(&res) || res_is_raw(&res) {
-        return Ok(res.map_into_boxed_body());
-    }
-
-    let pathname = res.request().path().to_string();
-    let (http_req, http_res) = res.into_parts();
-    let headers = http_res.headers().clone();
-    let bytes = match body::to_bytes(http_res.into_body()).await {
-        Err(e) => {
-            cu::error!("internal error while reading raw html before injection: {e:?}");
-            return Err(actix_web::error::ErrorInternalServerError("unexpected"));
-        }
-        Ok(x) => x,
-    };
-    let body_injected = do_inject(String::from_utf8_lossy(&bytes), &pathname);
-
-    Ok(build_response(http_req, status, headers, body_injected))
-}
-
-fn build_response(
-    http_req: HttpRequest,
-    status: StatusCode,
-    headers: HeaderMap,
-    body: String,
-) -> ServiceResponse {
-    let mut builder = HttpResponse::build(status);
-    for (name, value) in headers {
-        builder.append_header((name, value));
-    }
-    let res = builder.body(body);
-    ServiceResponse::new(http_req, res)
-}
-
-/// Check if request looks like it's coming from a browser
-fn req_is_browser(req: &HttpRequest) -> bool {
-    req.headers()
-        .get("user-agent")
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|ua| ua.contains("Mozilla") || ua.contains("Chrome") || ua.contains("Safari"))
-}
-
-/// Check if the request is requesting a raw file
-fn req_is_raw(req: &HttpRequest) -> bool {
-    req.query_string()
-        .split('&')
-        .any(|p| p == "x-shwoop-is-raw=1")
-}
-
-/// Check if the request is a success HTML file
-fn res_is_html<B>(res: &ServiceResponse<B>) -> bool {
-    res.headers()
-        .get(CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|ct| ct.starts_with("text/html"))
-}
-
-/// Returns true if the path looks like a navigable HTML page (ends with `/`,
-/// has a `.html` extension, or has no extension), so we only serve the error
-/// page for those, not for assets like CSS or JS.
-fn is_html_path(path: &str) -> bool {
-    if path.ends_with('/') {
-        return true;
-    }
-    let last_segment = path.rsplit('/').next().unwrap_or(path);
-    match last_segment.rfind('.') {
-        Some(dot) => {
-            let ext = &last_segment[dot..];
-            ext.eq_ignore_ascii_case(".html") || ext.eq_ignore_ascii_case(".htm")
-        }
-        None => true,
+            cu::info!("{} - {} (injected)", status, res.request().uri());
+            let (req, res) = res.into_parts();
+            let body_bytes = match body::to_bytes(res.into_body()).await {
+                Ok(b) => b,
+                Err(e) => {
+                    cu::error!("failed to read response body for injection: {e}");
+                    return Ok(ServiceResponse::new(
+                        req,
+                        HttpResponse::InternalServerError().finish(),
+                    ));
+                }
+            };
+            let body = handler::inject_bootstrap(&body_bytes);
+            Ok(ServiceResponse::new(
+                req,
+                handler::html_bytes_response(body),
+            ))
+        });
     }
 }
 
-static WRAPPER: &str = include_str!("../../dist/index.html");
-static ERROR_PAGE: &str = include_str!("error.html");
+// static WRAPPER: &str = include_str!("../../dist/index.html");
+static ERROR_PAGE: &str = include_str!("404.html");
 
-fn make_error_page(code: u16, text: &str, url: &str) -> String {
+fn make_error_page(status: StatusCode) -> String {
+    if status == StatusCode::NOT_FOUND {
+        return ERROR_PAGE.into();
+    }
     ERROR_PAGE
-        .replacen("PLACEHOLDER_STATUS_CODE", &code.to_string(), 2)
-        .replacen("PLACEHOLDER_STATUS_TEXT", text, 2)
-        .replacen("PLACEHOLDER_URL", url, 1)
+        .replacen("404", &status.as_u16().to_string(), 2)
+        .replacen("Not Found", status.canonical_reason().unwrap_or("Error"), 2)
+        .into()
 }
 
-fn do_inject(content_str: Cow<'_, str>, path: &str) -> String {
-    let mut output = String::new();
-    let mut rest_wrapper = WRAPPER;
-
-    // Replace <html> in wrapper with the opening <html ...> tag from content
-    // to preserve any attributes (e.g. lang="en")
-    if let Some(html_tag) = extract_html_tag(&content_str) {
-        replace_placeholder(&mut output, &mut rest_wrapper, "<html>", html_tag);
-    }
-
-    // If content has a <link rel="icon">, add it to the wrapper's <head>
-    if let Some(link_icon_tag) = extract_link_icon_tag(&content_str) {
-        replace_placeholder(
-            &mut output,
-            &mut rest_wrapper,
-            "<!-- PLACEHOLDER_LINK_ICON -->",
-            link_icon_tag,
-        );
-    }
-
-    // if !path.is_empty() {
-    //     replace_placeholder(
-    //         &mut output,
-    //         &mut rest_wrapper,
-    //         "<!-- PLACEHOLDER_PRELOAD -->",
-    //         &format!(r#"<link rel="preload" href="{path}?x-shwoop-is-raw=1" as="document">"#),
-    //     );
-    //
-    // }
-
-    output.push_str(rest_wrapper);
-    output
-}
+// fn do_inject(content_str: &str) -> String {
+//     let mut output = String::new();
+//     let mut rest_wrapper = WRAPPER;
+//
+//     // // Replace <html> in wrapper with the opening <html ...> tag from content
+//     // // to preserve any attributes (e.g. lang="en")
+//     // if let Some(html_tag) = extract_html_tag(&content_str) {
+//     //     replace_placeholder(&mut output, &mut rest_wrapper, "<html>", html_tag);
+//     // }
+//     //
+//     // // If content has a <link rel="icon">, add it to the wrapper's <head>
+//     // if let Some(link_icon_tag) = extract_link_icon_tag(&content_str) {
+//     //     replace_placeholder(
+//     //         &mut output,
+//     //         &mut rest_wrapper,
+//     //         "<!-- PLACEHOLDER_LINK_ICON -->",
+//     //         link_icon_tag,
+//     //     );
+//     // }
+//
+//     // if !path.is_empty() {
+//     //     replace_placeholder(
+//     //         &mut output,
+//     //         &mut rest_wrapper,
+//     //         "<!-- PLACEHOLDER_PRELOAD -->",
+//     //         &format!(r#"<link rel="preload" href="{path}?x-shwoop-is-raw=1">"#),
+//     //     );
+//     //
+//     // }
+//     //
+//     // replace_placeholder(
+//     //     &mut output,
+//     //     &mut rest_wrapper,
+//     //     "<!-- PLACEHOLDER_SERVER_FRAME -->",
+//     //     &format!(r##"<iframe class="content-frame" allow="accelerometer; autoplay; bluetooth; camera; clipboard-read; clipboard-write; display-capture; encrypted-media; fullscreen; gamepad; geolocation; gyroscope; hid; identity-credentials-get; idle-detection; local-fonts; magnetometer; microphone; midi; payment; picture-in-picture; publickey-credentials-get; screen-wake-lock; serial; storage-access; usb; web-share; xr-spatial-tracking" sandbox="allow-downloads allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation allow-top-navigation-by-user-activation allow-top-navigation-to-custom-protocols" src="{}?x-shwoop-is-raw=1" style="z-index:99" onload="console.log('rendered in '+Math.floor(performance.now())+'ms')"></iframe>"##, path)
+//     // );
+//
+//     output.push_str(rest_wrapper);
+//     output
+// }
 
 /// Advance the `rest` cursor past `placeholder`, emitting everything before it plus
 /// `replacement` into `output`. Logs an error if the placeholder is not found.

@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>PLACEHOLDER_STATUS_CODE PLACEHOLDER_STATUS_TEXT</title>
+  <title>404 Not Found</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root { color-scheme: light dark; }
@@ -62,12 +62,15 @@
 <body>
   <div class="card">
     <div class="status">
-      <div class="code">PLACEHOLDER_STATUS_CODE</div>
-      <div class="text">PLACEHOLDER_STATUS_TEXT</div>
+      <div class="code">404</div>
+      <div class="text">Not Found</div>
     </div>
     <div class="divider"></div>
-    <div class="url">PLACEHOLDER_URL</div>
+    <div class="shwoop-error-url"></div>
     <div class="hint">(this page will automatically reload when the resource becomes available)</div>
+    <script>
+            document.querySelector("div.shwoop-error-url").innerText=location.pathname
+    </script>
   </div>
 </body>
 </html>

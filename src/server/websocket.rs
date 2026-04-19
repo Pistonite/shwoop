@@ -1,17 +1,8 @@
 use std::sync::{Mutex, atomic::AtomicU32};
 
 use actix::{Actor, ActorContext, Addr, AsyncContext, Handler, Message, StreamHandler};
-use actix_web::guard::GuardContext;
 use actix_web::{HttpRequest, HttpResponse, web};
 use actix_web_actors::ws;
-
-pub fn is_websocket_upgrade(ctx: &GuardContext) -> bool {
-    ctx.head()
-        .headers()
-        .get("upgrade")
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.eq_ignore_ascii_case("websocket"))
-}
 
 #[derive(Default)]
 pub struct SessionMgr {

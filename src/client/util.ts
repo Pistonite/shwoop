@@ -13,11 +13,11 @@ export const sleep = (ms: number): Promise<void> => {
 };
 
 export const log = (...x: unknown[]) => {
-    console.log(BIN_NAME, ...x);
+    console.log("[" + BIN_NAME + "]", ...x);
 };
 
 export const error = (...x: unknown[]) => {
-    console.log(BIN_NAME, ...x);
+    console.log("[" + BIN_NAME + "]", ...x);
 };
 
 export const HOST = import.meta.env.DEV

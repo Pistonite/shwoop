@@ -19,8 +19,16 @@ fn main(args: args::Args) -> cu::Result<()> {
             "failed to run initial build"
         )?;
     }
-    if !path.exists() {
-        cu::bail!("the path to serve does not exist: '{}'", path.display());
+    match path.metadata() {
+        Ok(m) if m.is_file() => {
+            cu::warn!(
+                "input path is a file - only this file will be served and not referenced assets."
+            );
+        }
+        Err(_) => {
+            cu::bail!("the path to serve does not exist: '{}'", path.display());
+        }
+        _ => {}
     }
     let watch_for_build = !args.command.is_empty() && !args.watch.is_empty();
 

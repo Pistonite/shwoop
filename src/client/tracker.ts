@@ -1,5 +1,6 @@
-import { toast } from "./status_bar.ts";
-import { type Class, error, log, sleep } from "./util.ts";
+import type { Frame } from "./frame.ts";
+import type { StatusBar } from "./status_bar.ts";
+import { error, log, sleep } from "./util.ts";
 
 type ScrollEntry = {
     id: string;
@@ -20,7 +21,8 @@ type StackItem = {
 
 const BATCH_TARGET_MS = 50;
 const BATCH_MAX_SIZE = 10000;
-const STABILIZE_DEBOUNCE_MS = 1000;
+const STABILIZE_DEBOUNCE_MS = 1000; // start with 1000 ms
+const STABILIZE_DEBOUNCE_MS_MIN = 200; // wait for at least 200ms for the document to stablize and any css/dom change to be done
 const STABILIZE_TIMEOUT_MS = 2000;
 
 /** Tracks state of the document that can be re-applied when reloading */
@@ -28,14 +30,22 @@ export class StateTracker {
     private controller: AbortController;
     private state: Map<string, ScrollEntry>;
     private changedWhileStarting: boolean;
+    private lastStabilizationMs: number | undefined;
+    private enabled: boolean;
 
     constructor(
-        private rootFrame: HTMLIFrameElement,
-        private lastStabilizationMs: number | undefined,
+        private status: StatusBar,
+        // public pathname: string,
+        private rootFrame: Frame,
+        previous: StateTracker | undefined,
     ) {
+        this.enabled = this.status.isStateTrackingEnabled();
         this.controller = new AbortController();
         this.state = new Map();
         this.changedWhileStarting = false;
+        // if (previous?.pathname === pathname) {
+        this.lastStabilizationMs = previous?.lastStabilizationMs;
+        // }
     }
 
     public stop() {
@@ -47,16 +57,18 @@ export class StateTracker {
     }
 
     public async start(): Promise<boolean> {
-        const rootBody = safeGetFrameDocuemnt(this.rootFrame)?.body;
+        const rootBody = this.rootFrame.document()?.body;
         if (!rootBody) {
-            toast("red", "failed to get top-frame body, state will not be tracked");
+            this.status.toast("red", "failed to get body of root frame, state will not be tracked");
+            // attempt to wait for at least some time for the render to be ready
+            await sleep(STABILIZE_DEBOUNCE_MS_MIN);
             return false;
         }
         const stabilizationDebounceMs = this.lastStabilizationMs
-            ? this.lastStabilizationMs * 2
+            ? Math.max(this.lastStabilizationMs * 2, STABILIZE_DEBOUNCE_MS_MIN)
             : STABILIZE_DEBOUNCE_MS;
         if (!(await this.waitForStabilization(rootBody, stabilizationDebounceMs))) {
-            toast(
+            this.status.toast(
                 "red",
                 `the document structure did not stablize after ${stabilizationDebounceMs}, state will not be tracked`,
             );
@@ -73,13 +85,18 @@ export class StateTracker {
             { once: true },
         );
 
+        if (!this.enabled) {
+            return false;
+        }
+
         const startTime = performance.now();
         let elemCount = 0;
-        this.rootFrame.contentWindow?.addEventListener(
+        this.rootFrame.window()?.addEventListener(
             "scroll",
             () => {
                 const sTop = rootBody.scrollTop;
                 const sLeft = rootBody.scrollLeft;
+                console.log(sTop, sLeft);
                 if (sTop || sLeft) {
                     this.state.set("", {
                         id: "",
@@ -98,7 +115,7 @@ export class StateTracker {
             const stack: StackItem[] = [];
             const bodyChildren = rootBody.children;
             for (let i = bodyChildren.length - 1; i >= 0; i--) {
-                const e = this.iframeElemCast(bodyChildren[i], HTMLElement);
+                const e = this.rootFrame.cast(bodyChildren[i], HTMLElement);
                 if (!e) {
                     continue;
                 }
@@ -137,12 +154,12 @@ export class StateTracker {
                         );
                     }
 
-                    if (this.iframeElemCast(elem, HTMLIFrameElement)) {
+                    if (this.rootFrame.cast(elem, HTMLIFrameElement)) {
                         // iframe embedded documents will not be tracked for scroll right now
                     } else {
                         const children = elem.children;
                         for (let i = children.length - 1; i >= 0; i--) {
-                            const e = this.iframeElemCast(children[i], HTMLElement);
+                            const e = this.rootFrame.cast(children[i], HTMLElement);
                             if (!e) {
                                 continue;
                             }
@@ -170,7 +187,7 @@ export class StateTracker {
                     return false;
                 }
                 if (this.changedWhileStarting) {
-                    toast(
+                    this.status.toast(
                         "red",
                         `the document structure changed while states are being tracked, state will not be tracked for the remaining elements.`,
                     );
@@ -189,19 +206,19 @@ export class StateTracker {
         return true;
     }
 
-    public apply(frame: HTMLIFrameElement) {
-        const body = safeGetFrameDocuemnt(frame)?.body;
+    public async apply(frame: Frame): Promise<void> {
+        const body = frame.document()?.body;
         if (!body) {
             return;
         }
         let elemCount = 0;
-        let windowScrollTop = 0;
-        let windowScrollLeft = 0;
+        // let windowScrollTop = 0;
+        // let windowScrollLeft = 0;
         for (const [path, entry] of this.state) {
             const { id, tag, scrollTop, scrollLeft } = entry;
             if (!path) {
-                windowScrollTop = scrollTop;
-                windowScrollLeft = scrollLeft;
+                // windowScrollTop = scrollTop;
+                // windowScrollLeft = scrollLeft;
                 continue;
             }
             const elem = checkedElementAtPath(frame, body, id, path, tag);
@@ -217,19 +234,15 @@ export class StateTracker {
             elem.style.scrollBehavior = prevScrollBehavior;
             elemCount++;
         }
-        log(`applied state for ${elemCount} nodes`);
-        if (windowScrollTop || windowScrollLeft) {
-            frame.contentWindow?.scrollTo(windowScrollLeft, windowScrollTop);
-            log("applied window scroll");
+        if (elemCount) {
+            // need time to render the update
+            // await sleep(200);
         }
-    }
-
-    /**
-     * Cast e to a sub HTMLElement type. This is needed because each frame has a different HTMLElement class
-     * so we need to use the frame's class to do the instanceof check
-     */
-    private iframeElemCast<T extends Element>(e: Element | null, clazz: Class<T>): T | null {
-        return iframeElemCast(this.rootFrame, e, clazz);
+        log(`applied state for ${elemCount} nodes`);
+        // if (windowScrollTop || windowScrollLeft) {
+        //     frame.contentWindow?.scrollTo(windowScrollLeft, windowScrollTop);
+        //     log("applied window scroll");
+        // }
     }
 
     /**
@@ -264,14 +277,6 @@ export class StateTracker {
     }
 }
 
-const safeGetFrameDocuemnt = (frame: HTMLIFrameElement): Document | null => {
-    try {
-        return frame.contentDocument;
-    } catch {
-        return null;
-    }
-};
-
 const isScrollable = (el: Element): boolean => {
     const { overflowX, overflowY } = getComputedStyle(el);
     const scrollableY =
@@ -285,7 +290,7 @@ const isScrollable = (el: Element): boolean => {
 };
 
 const checkedElementAtPath = (
-    frame: HTMLIFrameElement,
+    frame: Frame,
     body: HTMLElement,
     id: string,
     path: string,
@@ -305,7 +310,7 @@ const checkedElementAtPath = (
     for (let i = 0; i < pathStack.length; i++) {
         const index = +pathStack[i];
         const tag = tagStack[i];
-        const child = iframeElemCast(frame, cur.children[index], HTMLElement);
+        const child = frame.cast(cur.children[index], HTMLElement);
         if (!child || child.tagName.toLowerCase() !== tag) {
             return null;
         }
@@ -315,41 +320,4 @@ const checkedElementAtPath = (
         cur = child;
     }
     return cur;
-};
-/**
- * Cast e to a sub HTMLElement type. This is needed because each frame has a different HTMLElement class
- * so we need to use the frame's class to do the instanceof check
- */
-const iframeElemCast = <T extends Element>(
-    frame: HTMLIFrameElement,
-    e: Element | null,
-    clazz: Class<T>,
-): T | null => {
-    if (!e) {
-        return null;
-    }
-    if (e instanceof clazz) {
-        return e;
-    }
-    const name = clazz.name;
-    try {
-        const iframeWindow = frame.contentWindow;
-        if (!iframeWindow) {
-            return null;
-        }
-        if (!(name in iframeWindow)) {
-            return null;
-        }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const iframeClass = (iframeWindow as any)[name];
-        if (typeof iframeClass !== "function") {
-            return null;
-        }
-        if (e instanceof iframeClass) {
-            return e as T;
-        }
-    } catch {
-        // fallthrough
-    }
-    return null;
 };
