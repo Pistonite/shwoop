@@ -50,10 +50,10 @@ tasks:
   publish:
     cmds:
       - task: pre-publish
-      - task: do-publish
+      # - task: do-publish
 
   pre-publish:
-    internal: true
+    # internal: true
     cmds:
       - task: git:check-modification
         vars:
@@ -73,7 +73,7 @@ tasks:
     cmds:
       - git tag 'v{{.VERSION}}'
       - git push origin 'v{{.VERSION}}'
-      - cargo publish
+      - cargo publish --allow-dirty # the dist files are considered dirty
       
     
 
