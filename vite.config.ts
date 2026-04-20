@@ -39,7 +39,13 @@ const postProcess = (): Plugin => {
         closeBundle: async () => {
             const srcDir = path.resolve(import.meta.dirname, "src");
             const distDir = path.resolve(import.meta.dirname, "dist");
-            const files = (await fs.readdir(distDir)).filter((f) => f.endsWith(".js.map"));
+            let files: string[] = [];
+            try {
+                files = (await fs.readdir(distDir)).filter((f) => f.endsWith(".js.map"));
+            } catch {
+                console.error("failed to read dist, not post processing");
+                return;
+            }
             if (files.length === 0) {
                 throw new Error("No .js.map file found in dist");
             }

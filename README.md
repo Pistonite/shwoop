@@ -1,5 +1,10 @@
 # shwoop
 
+![Build Badge](https://img.shields.io/github/actions/workflow/status/Pistonite/shwoop/build.yml)
+![Version Badge](https://img.shields.io/crates/v/shwoop)
+![License Badge](https://img.shields.io/github/license/Pistonite/shwoop)
+![Issue Badge](https://img.shields.io/github/issues/Pistonite/shwoop)
+
 A development server for static web content with hot reload and optional build integration.
 Perfect for developing static-content and documentation generator like `rustdoc`, `mdbook`, `typedoc`, etc.
 
