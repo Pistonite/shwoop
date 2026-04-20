@@ -25,13 +25,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: ubuntu-latest
+          - image: blacksmith-4vcpu-ubuntu-2404
             target: x64
-          - image: ubuntu-24.04-arm
+          - image: blacksmith-4vcpu-ubuntu-2404-arm
             target: arm64
-          - image: macos-latest
+          - image: blacksmith-6vcpu-macos-latest
             target: arm64
-          - image: windows-latest
+          - image: blacksmith-4vcpu-windows-2025
             target: x64
     runs-on: ${{ matrix.image }}
     steps:
