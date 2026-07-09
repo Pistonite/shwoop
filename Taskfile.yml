@@ -17,7 +17,6 @@ includes:
 tasks:
   install:
     - pnpm install
-    - pnpm exec monolint --config
 
   build:
     - task: ecma:app-build
