@@ -259,7 +259,7 @@ export class StatusBar {
     }
 }
 
-type Settings = {
+interface Settings {
     enableHotReload?: boolean;
     enableStateTracking?: boolean;
-};
+}

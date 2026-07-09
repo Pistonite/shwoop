@@ -79,14 +79,11 @@ pub fn inject_bootstrap(html: &[u8]) -> Vec<u8> {
     let injected = std::cell::Cell::new(false);
     let mut output = Vec::with_capacity(html.len() + script.len());
     let mut rewriter = HtmlRewriter::new(
-        Settings {
-            element_content_handlers: vec![element!("body", |el| {
-                injected.set(true);
-                el.append(script, ContentType::Html);
-                Ok(())
-            })],
-            ..Settings::default()
-        },
+        Settings::new().append_element_content_handler(element!("body", |el| {
+            injected.set(true);
+            el.append(script, ContentType::Html);
+            Ok(())
+        })),
         |c: &[u8]| output.extend_from_slice(c),
     );
     if let Err(e) = rewriter.write(html) {

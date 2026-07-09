@@ -3,7 +3,7 @@ name = "shwoop"
 description = "Tool to serve static webpage with build-and-hot-reload feature"
 repository = "https://github.com/Pistonite/shwoop"
 authors = ["Pistonight <pistonknight@outlook.com>"]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "MIT"
 keywords = ["hot-reload", "dev-server", "static-files", "web", "build"]
@@ -20,18 +20,18 @@ include = [
 
 [dependencies.cu]
 package = "pistonite-cu"
-version = "0.8.1"
+version = "0.8.4"
 features = [ "cli", "derive", "coroutine", "process" ]
 # path = "../cu/packages/copper"
 
 [dependencies]
 actix = "0.13.5"
 actix-files = "0.6.10"
-actix-web = "4.13.0"
+actix-web = "4.14.0"
 actix-ws = "0.4.0"
-dashmap = "6.1.0"
-log = "0.4.29"
-lol_html = "2.7.2"
+dashmap = "6.2.1"
+log = "0.4.33"
+lol_html = "3.0.0"
 tokio = "1"
 oneshot = { version = "0.2.1", features = [ "async" ] }
 watchexec = "8.2.0"

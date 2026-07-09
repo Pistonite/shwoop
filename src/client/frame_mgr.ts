@@ -149,7 +149,7 @@ export class FrameMgr {
     }
 }
 
-export type FrameTask = {
+export interface FrameTask {
     pathname: string;
     resolve: () => void;
-};
+}
