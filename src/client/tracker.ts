@@ -2,22 +2,22 @@ import type { Frame } from "./frame.ts";
 import type { StatusBar } from "./status_bar.ts";
 import { error, log, sleep } from "./util.ts";
 
-type ScrollEntry = {
+interface ScrollEntry {
     id: string;
     /** tag stack from body (e.g. div>div>p) */
     tag: string;
     scrollTop: number;
     scrollLeft: number;
-};
+}
 
-type StackItem = {
+interface StackItem {
     /** The element to process. */
     elem: HTMLElement;
     /** Full path to this element **at the time of stabilization** */
     path: string;
     /** tag stack from body, separated by > */
     tag: string;
-};
+}
 
 const BATCH_TARGET_MS = 50;
 const BATCH_MAX_SIZE = 10000;

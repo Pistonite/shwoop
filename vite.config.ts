@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { defineConfig, type Plugin } from "mono-dev/vite";
-import monodev from "mono-dev/vite-config";
+import { type Plugin } from "mono-dev/vite";
+import { configure } from "mono-dev/app-build-config";
 
 // kind of a hack - using vite's app mode since mono-dev lib-build mode
 // will also produce type definition which we don't need.
@@ -75,22 +75,19 @@ pub static JS_BOOTSTRAP: &str = concat!("<script>",include_str!("bootstrap.js"),
     };
 };
 
-const monodevConfig = monodev({});
-export default defineConfig(async () => {
+export default configure(async () => {
     await writeIndexHtml();
-    return monodevConfig({
+    return {
         define: {
             BIN_NAME: "'shwoop'",
         },
         plugins: [postProcess()],
         build: {
-            // tried inline sourcemap but that doesn't really work for some reason
-            // (could be because of the inline plugin?)
             rolldownOptions: {
                 output: {
                     entryFileNames: JS_CHUNK_NAME + "-xxx-[hash].js",
                 },
             },
         },
-    });
+    };
 });
