@@ -5,7 +5,7 @@ use actix_web::HttpResponse;
 use actix_web::body::{self, BoxBody, MessageBody};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready};
 use actix_web::http::StatusCode;
-use cu::str::PathExtension;
+use cu::pre::*;
 
 use crate::server::handler;
 

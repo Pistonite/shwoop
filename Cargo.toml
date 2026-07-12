@@ -3,7 +3,7 @@ name = "shwoop"
 description = "Tool to serve static webpage with build-and-hot-reload feature"
 repository = "https://github.com/Pistonite/shwoop"
 authors = ["Pistonight <pistonknight@outlook.com>"]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 license = "MIT"
 keywords = ["hot-reload", "dev-server", "static-files", "web", "build"]
@@ -20,7 +20,7 @@ include = [
 
 [dependencies.cu]
 package = "pistonite-cu"
-version = "0.8.4"
+version = "0.9.0"
 features = [ "cli", "derive", "coroutine", "process" ]
 # path = "../cu/packages/copper"
 
